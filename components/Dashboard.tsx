@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { DocFile, SyncLog } from '../types';
 
@@ -6,7 +7,7 @@ interface DashboardProps {
   isSyncing: boolean;
   onSyncAll: () => void;
   onConnectDrive: () => void;
-  onToggleWatch: (fileId: string) => void; // Novo callback
+  onToggleWatch: (fileId: string) => void;
   isConnected: boolean;
   logs: SyncLog[];
 }
@@ -32,6 +33,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
       default:
         return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-50 text-yellow-700 border border-yellow-200"><i className="fas fa-clock mr-1"></i> Pendente</span>;
     }
+  };
+
+  const getFileIcon = (mimeType: string) => {
+    if (mimeType.includes('pdf')) return <i className="fas fa-file-pdf text-red-500 text-lg"></i>;
+    if (mimeType.includes('word') || mimeType.includes('document')) return <i className="fas fa-file-word text-blue-600 text-lg"></i>;
+    if (mimeType.includes('spreadsheet') || mimeType.includes('sheet')) return <i className="fas fa-file-excel text-green-600 text-lg"></i>;
+    if (mimeType.includes('presentation')) return <i className="fas fa-file-powerpoint text-orange-500 text-lg"></i>;
+    if (mimeType.includes('text')) return <i className="fas fa-file-alt text-gray-500 text-lg"></i>;
+    return <i className="fas fa-file text-gray-400 text-lg"></i>;
   };
 
   return (
@@ -70,21 +80,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
           <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
              <h3 className="font-semibold text-gray-700"><i className="fas fa-file-alt mr-2 text-blue-500"></i>Documentos</h3>
-             <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">{files.length} detectados</span>
+             <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">{files.length} encontrados</span>
           </div>
           <div className="flex-1 overflow-y-auto min-h-[300px]">
             {files.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-gray-400 py-10">
                     <i className="fas fa-folder-open text-4xl mb-3 opacity-30"></i>
                     <p>Nenhum documento listado.</p>
-                    <p className="text-sm mt-1">{!isConnected ? 'Aguardando conexão...' : 'Verifique se há Google Docs no seu Drive.'}</p>
+                    <p className="text-sm mt-1">{!isConnected ? 'Aguardando conexão...' : 'Verifique seu Drive.'}</p>
                 </div>
             ) : (
                 <table className="w-full text-left border-collapse">
                 <thead className="bg-gray-50 sticky top-0 z-10">
                     <tr>
                     <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center w-16">Auto</th>
-                    <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Documento</th>
+                    <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Arquivo</th>
                     <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
                     </tr>
                 </thead>
@@ -105,8 +115,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         </td>
                         <td className="p-4">
                             <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center text-blue-600 flex-shrink-0">
-                                    <i className={`fas ${file.mimeType.includes('pdf') ? 'fa-file-pdf' : 'fa-file-word'}`}></i>
+                                <div className="w-8 h-8 rounded bg-gray-50 border border-gray-200 flex items-center justify-center flex-shrink-0">
+                                    {getFileIcon(file.mimeType)}
                                 </div>
                                 <div className="min-w-0">
                                     <p className="font-medium text-gray-800 truncate max-w-xs text-sm" title={file.name}>{file.name}</p>
