@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { DocFile, SyncLog, AppConfig } from '../types';
 
@@ -61,7 +62,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4">
          <div className="flex items-center gap-4 w-full md:w-auto">
              <div className="bg-indigo-50 p-2 rounded-lg border border-indigo-100 min-w-[200px]">
-                 <label className="text-xs font-bold text-indigo-800 uppercase block mb-1">Agente Ativo (Destino)</label>
+                 <label className="text-xs font-bold text-indigo-800 uppercase block mb-1">Agente Ativo (Visualização)</label>
                  <select 
                     value={config.activeProfileId}
                     onChange={(e) => onChangeProfile(e.target.value)}
@@ -111,7 +112,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         className={`px-4 py-2 rounded font-medium text-white text-sm transition flex items-center gap-2 ${isSyncing ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
                     >
                         <i className={`fas fa-sync ${isSyncing ? 'fa-spin' : ''}`}></i>
-                        {isSyncing ? 'Sincronizando...' : 'Sync Ativos'}
+                        {isSyncing ? 'Processando...' : `Sync ${activeProfile?.name}`}
                     </button>
                 </>
             )}
@@ -147,7 +148,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     {filteredFiles.map(file => (
                     <tr key={file.id} className={`hover:bg-gray-50 transition ${file.watched ? 'bg-blue-50/30' : ''}`}>
                         <td className="p-3 text-center align-middle">
-                            <label className="relative inline-flex items-center cursor-pointer" title="Ativar monitoramento automático">
+                            <label className="relative inline-flex items-center cursor-pointer" title={`Ativar monitoramento para ${activeProfile?.name}`}>
                                 <input type="checkbox" className="sr-only peer" checked={file.watched} onChange={() => onToggleWatch(file.id)} />
                                 <div className={`w-8 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all ${file.watched ? 'peer-checked:bg-blue-600' : ''}`}></div>
                             </label>
@@ -185,8 +186,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
         {/* Logs */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-[400px] lg:h-auto">
-          <div className="p-3 border-b border-gray-100 bg-gray-50">
-             <h3 className="font-semibold text-gray-700 text-sm"><i className="fas fa-terminal mr-2"></i>Log do Agente: {activeProfile?.name}</h3>
+          <div className="p-3 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+             <h3 className="font-semibold text-gray-700 text-sm"><i className="fas fa-terminal mr-2"></i>Logs do Sistema</h3>
+             <button onClick={() => logs.length = 0} className="text-xs text-gray-400 hover:text-red-500">Limpar</button>
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-gray-900 text-green-400 font-mono text-xs">
             {logs.length === 0 ? <p className="opacity-50 italic">Aguardando eventos...</p> : logs.map(log => (
