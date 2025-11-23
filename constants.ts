@@ -1,21 +1,16 @@
 
-// In a real production app, never expose keys on the client side.
-// However, per user request for this internal tool, we are configuring the keys here.
-
-export const GEMINI_API_KEY = "AIzaSyByTvMWBOCa1TKUuVAM5z6NyoIT7JjrVWM";
-
-// Configurações Padrão do Dify (Atualizadas)
-// ID do Dataset (UUID)
-export const DEFAULT_DIFY_DATASET_ID = "d38bbcab-adf9-4181-a744-2d2f492701e7";
-// API Key (Começa com dataset-)
-export const DEFAULT_DIFY_API_KEY = "dataset-ebBnUsz69YPq6TWRuDBoPu2c";
+// As chaves agora são configuradas pelo usuário na interface para evitar vazamentos (Erro 403).
+// Mantemos apenas constantes de estrutura ou valores padrão seguros.
 
 export const DEFAULT_DIFY_BASE_URL = "https://api.dify.ai/v1";
+export const DEFAULT_DIFY_DATASET_ID = "";
 
-// We use this to simulate "Process.env" for the Google GenAI SDK as requested by the guidelines
-// In a real webpack/vite setup this would be replaced at build time.
+// Valores padrão para facilitar o preenchimento inicial (mas não são secretos)
+export const DEFAULT_SYNC_INTERVAL = 5;
+
+// Mock para compatibilidade se necessário, mas o uso real será dinâmico
 (window as any).process = {
   env: {
-    API_KEY: GEMINI_API_KEY
+    API_KEY: ''
   }
 };
