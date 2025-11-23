@@ -56,6 +56,16 @@ const App: React.FC = () => {
     localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(config));
   }, [config]);
 
+  // Resetar tentativas se a configuração de chaves mudar (Correção para não precisar F5)
+  useEffect(() => {
+    if (config.googleApiKey || config.googleClientId) {
+        if (initAttempts > 0 && !gapiInited) {
+            console.log("Configuração alterada, reiniciando tentativas de conexão...");
+            setInitAttempts(0); // Reseta o contador para tentar novamente
+        }
+    }
+  }, [config.googleApiKey, config.googleClientId]);
+
   // Salvar Lista de Monitorados sempre que mudar
   useEffect(() => {
       localStorage.setItem(STORAGE_KEY_WATCHED, JSON.stringify(watchedFileIds));
@@ -95,8 +105,8 @@ const App: React.FC = () => {
     let intervalId: ReturnType<typeof setInterval>;
 
     const checkAndInitGoogle = async () => {
-      // Se já tentamos 5 vezes e falhou, para de tentar para não travar o navegador
-      if (initAttempts > 5) {
+      // Se já tentamos 10 vezes e falhou, para de tentar para não travar o navegador
+      if (initAttempts > 10) {
           clearInterval(intervalId);
           return;
       }
@@ -121,7 +131,7 @@ const App: React.FC = () => {
                 
                 // Validação básica antes de chamar
                 if (!configRef.current.googleApiKey) {
-                    console.warn("Aguardando API Key...");
+                    // console.warn("Aguardando API Key...");
                     return; 
                 }
 
@@ -209,7 +219,9 @@ const App: React.FC = () => {
     if (tokenClient) {
         tokenClient.requestAccessToken({ prompt: 'consent' });
     } else {
-        addLog("Aguardando inicialização dos scripts do Google...", 'info');
+        addLog("Inicializando scripts... Se demorar, verifique sua API Key.", 'info');
+        // Força reset para tentar de novo se o usuário clicou
+        if (initAttempts > 5) setInitAttempts(0);
     }
   };
 
@@ -220,11 +232,11 @@ const App: React.FC = () => {
     }
 
     try {
-        addLog("Buscando arquivos no Drive...", 'info');
+        addLog("Buscando documentos no Drive...", 'info');
         console.log("--- DEBUG: INICIANDO FETCH FILES ---");
         
-        // Query simplificada para garantir resultados
-        const query = "trashed = false";
+        // Query filtrando apenas Docs, PDFs, Texto e Word, excluindo lixeira
+        const query = "trashed = false and (mimeType = 'application/vnd.google-apps.document' or mimeType = 'application/pdf' or mimeType = 'text/plain' or mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')";
 
         const response = await window.gapi.client.drive.files.list({
             'pageSize': 50,
@@ -272,10 +284,10 @@ const App: React.FC = () => {
                     } as DocFile;
                 });
             });
-            addLog(`${driveFiles.length} arquivos encontrados.`, 'info');
+            addLog(`${driveFiles.length} documentos encontrados.`, 'info');
         } else {
             console.warn("--- DEBUG: LISTA VAZIA ---", response);
-            addLog("Nenhum arquivo encontrado ou permissão negada.", 'info');
+            addLog("Nenhum documento de texto encontrado.", 'info');
         }
 
     } catch (err: any) {
@@ -296,12 +308,17 @@ const App: React.FC = () => {
   const getFileContent = async (fileId: string, mimeType: string): Promise<string> => {
       try {
           if (mimeType.includes('application/vnd.google-apps')) {
+              // Documentos do Google (Docs, Sheets, Slides) precisam ser exportados
+              let exportMimeType = 'text/plain';
+              if (mimeType.includes('spreadsheet')) exportMimeType = 'text/csv';
+              
               const response = await window.gapi.client.drive.files.export({
                   fileId: fileId,
-                  mimeType: 'text/plain'
+                  mimeType: exportMimeType
               });
               return response.body;
           } else {
+              // Arquivos binários (PDF, Word, Txt) podem ser baixados diretamente
               const response = await window.gapi.client.drive.files.get({
                   fileId: fileId,
                   alt: 'media'
@@ -338,7 +355,7 @@ const App: React.FC = () => {
             const content = await getFileContent(file.id, file.mimeType);
 
             if (!content || content.length === 0) {
-                throw new Error("Conteúdo vazio.");
+                throw new Error("Conteúdo vazio ou formato não suportado.");
             }
 
             let summary = "N/A";
