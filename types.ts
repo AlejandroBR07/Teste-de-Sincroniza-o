@@ -11,12 +11,25 @@ export interface DocFile {
   watched: boolean; // Se true, entra no ciclo de auto-sync
 }
 
-export interface AppConfig {
+export interface DifyProfile {
+  id: string;
+  name: string;
   difyApiKey: string;
-  difyBaseUrl: string;
   difyDatasetId: string;
+  difyBaseUrl: string;
+}
+
+export interface AppConfig {
+  // Configurações Globais (Google)
   googleClientId: string;
-  googleApiKey?: string;
+  googleApiKey: string; // Chave do Cloud Console (Drive)
+  geminiApiKey: string; // Chave do AI Studio (Resumos)
+  
+  // Gestão de Agentes
+  profiles: DifyProfile[];
+  activeProfileId: string;
+  
+  // Configurações de Sync
   autoSync: boolean;
   syncInterval: number;
 }
