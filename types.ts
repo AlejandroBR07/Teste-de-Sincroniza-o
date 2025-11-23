@@ -7,6 +7,7 @@ export interface DocFile {
   status: 'pendente' | 'sincronizado' | 'erro' | 'sincronizando';
   content?: string;
   webViewLink?: string;
+  watched: boolean; // Novo campo: se true, será sincronizado automaticamente
 }
 
 export interface AppConfig {
@@ -14,7 +15,7 @@ export interface AppConfig {
   difyBaseUrl: string;
   difyDatasetId: string;
   googleClientId: string;
-  googleApiKey?: string; // Optional if using OAuth2 only, but good for some calls
+  googleApiKey?: string;
   autoSync: boolean;
   syncInterval: number;
 }
