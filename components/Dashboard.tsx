@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { DocFile, SyncLog, AppConfig } from '../types';
 
@@ -37,12 +36,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const filteredFiles = files.filter(f => f.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   const getStatusBadge = (status: DocFile['status']) => {
+    // Adicionado whitespace-nowrap para evitar quebra de linha
+    const baseClasses = "px-2 py-1 text-xs font-semibold rounded-full border whitespace-nowrap flex items-center w-fit gap-1";
+    
     switch (status) {
-      case 'sincronizado': return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800 border border-green-200"><i className="fas fa-check mr-1"></i> Sync</span>;
-      case 'sincronizando': return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 animate-pulse border border-blue-200"><i className="fas fa-spinner fa-spin mr-1"></i> Enviando</span>;
-      case 'erro': return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800 border border-red-200"><i className="fas fa-times mr-1"></i> Erro</span>;
-      case 'pendente': return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200"><i className="fas fa-clock mr-1"></i> Pendente</span>;
-      default: return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-500 border border-gray-200">Não Monitorado</span>;
+      case 'sincronizado': return <span className={`${baseClasses} bg-green-100 text-green-800 border-green-200`}><i className="fas fa-check"></i> Sync</span>;
+      case 'sincronizando': return <span className={`${baseClasses} bg-blue-100 text-blue-800 animate-pulse border-blue-200`}><i className="fas fa-spinner fa-spin"></i> Enviando</span>;
+      case 'erro': return <span className={`${baseClasses} bg-red-100 text-red-800 border-red-200`}><i className="fas fa-times"></i> Erro</span>;
+      case 'pendente': return <span className={`${baseClasses} bg-yellow-100 text-yellow-800 border-yellow-200`}><i className="fas fa-clock"></i> Pendente</span>;
+      default: return <span className={`${baseClasses} bg-gray-100 text-gray-500 border-gray-200`}>Não Monitorado</span>;
     }
   };
 
@@ -58,8 +60,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* Top Bar: Profile & Action */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4">
          <div className="flex items-center gap-4 w-full md:w-auto">
-             <div className="bg-indigo-50 p-2 rounded-lg border border-indigo-100">
-                 <label className="text-xs font-bold text-indigo-800 uppercase block mb-1">Agente Ativo</label>
+             <div className="bg-indigo-50 p-2 rounded-lg border border-indigo-100 min-w-[200px]">
+                 <label className="text-xs font-bold text-indigo-800 uppercase block mb-1">Agente Ativo (Destino)</label>
                  <select 
                     value={config.activeProfileId}
                     onChange={(e) => onChangeProfile(e.target.value)}
@@ -145,7 +147,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     {filteredFiles.map(file => (
                     <tr key={file.id} className={`hover:bg-gray-50 transition ${file.watched ? 'bg-blue-50/30' : ''}`}>
                         <td className="p-3 text-center align-middle">
-                            <label className="relative inline-flex items-center cursor-pointer">
+                            <label className="relative inline-flex items-center cursor-pointer" title="Ativar monitoramento automático">
                                 <input type="checkbox" className="sr-only peer" checked={file.watched} onChange={() => onToggleWatch(file.id)} />
                                 <div className={`w-8 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all ${file.watched ? 'peer-checked:bg-blue-600' : ''}`}></div>
                             </label>
@@ -154,7 +156,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             <div className="flex items-center gap-3">
                                 <div className="text-gray-500">{getFileIcon(file.mimeType)}</div>
                                 <div className="min-w-0">
-                                    <div className="font-medium text-gray-800 truncate max-w-xs">{file.name}</div>
+                                    <div className="font-medium text-gray-800 truncate max-w-xs" title={file.name}>{file.name}</div>
                                     <div className="flex items-center gap-2 text-[10px] text-gray-400">
                                         <span>{new Date(file.modifiedTime).toLocaleDateString()}</span>
                                         <a href={file.webViewLink} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">Abrir <i className="fas fa-external-link-alt"></i></a>
@@ -162,13 +164,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 </div>
                             </div>
                         </td>
-                        <td className="p-3">{getStatusBadge(file.status)}</td>
-                        <td className="p-3 text-center">
+                        <td className="p-3 align-middle">{getStatusBadge(file.status)}</td>
+                        <td className="p-3 text-center align-middle">
                             <button 
                                 onClick={() => onSyncOne(file)}
                                 disabled={file.status === 'sincronizando' || isSyncing}
-                                className="text-gray-400 hover:text-blue-600 hover:bg-blue-50 w-8 h-8 rounded-full transition"
-                                title="Sincronizar agora"
+                                className="text-gray-400 hover:text-blue-600 hover:bg-blue-50 w-8 h-8 rounded-full transition flex items-center justify-center mx-auto"
+                                title="Sincronizar este arquivo agora"
                             >
                                 <i className="fas fa-bolt"></i>
                             </button>
