@@ -13,12 +13,10 @@ interface ConfigModalProps {
 export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClose, isOpen }) => {
   const [localConfig, setLocalConfig] = useState<AppConfig>(config);
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
-  const [showHelp, setShowHelp] = useState(false);
   const [activeTab, setActiveTab] = useState<'google' | 'agents' | 'general'>('agents');
 
   useEffect(() => {
     setLocalConfig(config);
-    // Seleciona o primeiro perfil para edição se houver
     if (config.profiles.length > 0 && !editingProfileId) {
         setEditingProfileId(config.profiles[0].id);
     }
@@ -76,7 +74,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClos
         {/* Header */}
         <div className="bg-slate-900 p-4 flex justify-between items-center text-white">
           <h2 className="text-lg font-bold flex items-center gap-2">
-            <i className="fas fa-cogs"></i> Configurações do DocuSync
+            <i className="fas fa-layer-group"></i> Configurações do DocSync
           </h2>
           <button onClick={onClose} className="text-slate-400 hover:text-white transition">
             <i className="fas fa-times text-xl"></i>
@@ -254,6 +252,9 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClos
                                 />
                                 <span className="font-bold text-gray-700">Ativar Sincronização Automática</span>
                             </label>
+                            <p className="text-sm text-gray-500 ml-8 mt-1">
+                                O sistema irá verificar periodicamente todos os agentes configurados e sincronizar arquivos alterados.
+                            </p>
                             <div className="mt-4 ml-8">
                                 <label className="block text-sm text-gray-600 mb-1">Intervalo de Verificação (minutos)</label>
                                 <input 
