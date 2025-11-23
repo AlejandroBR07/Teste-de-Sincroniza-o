@@ -29,7 +29,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
   logs 
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [isHelpOpen, setIsHelpOpen] = useState(false);
 
   const activeProfile = config.profiles.find(p => p.id === config.activeProfileId);
   const filteredFiles = files.filter(f => f.name.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -54,59 +53,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
   return (
     <div className="flex flex-col h-full gap-6 relative">
       
-      {/* Modal de Tutorial */}
-      {isHelpOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setIsHelpOpen(false)}>
-           <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-0 overflow-hidden" onClick={e => e.stopPropagation()}>
-              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-4 flex justify-between items-center text-white">
-                 <h2 className="font-bold text-lg"><i className="fas fa-book-open mr-2"></i> Guia de Configuração</h2>
-                 <button onClick={() => setIsHelpOpen(false)}><i className="fas fa-times text-lg"></i></button>
-              </div>
-              <div className="p-6 overflow-y-auto max-h-[80vh] space-y-6">
-                 
-                 <div className="space-y-2">
-                     <h3 className="font-bold text-gray-800 border-b pb-2">1. Configurar Google Drive (Cloud Console)</h3>
-                     <p className="text-sm text-gray-600">Necessário para ler seus arquivos.</p>
-                     <ul className="text-sm list-disc pl-5 space-y-1 text-gray-700">
-                         <li>Acesse o <a href="https://console.cloud.google.com/" target="_blank" className="text-blue-600 underline">Google Cloud Console</a>.</li>
-                         <li>Crie um projeto e vá em <strong>APIs & Services &gt; Enable APIs</strong>.</li>
-                         <li>Ative a <strong>"Google Drive API"</strong>.</li>
-                         <li>Vá em <strong>Credentials</strong> e crie uma <strong>API Key</strong> (Copie para o campo Google Cloud API Key).</li>
-                         <li>Crie um <strong>OAuth 2.0 Client ID</strong> (Web Application).</li>
-                         <li>Em "Authorized JavaScript origins", adicione: <code className="bg-gray-100 px-1 rounded">{window.location.origin}</code> (sem barra no final).</li>
-                         <li>Copie o Client ID.</li>
-                     </ul>
-                 </div>
-
-                 <div className="space-y-2">
-                     <h3 className="font-bold text-gray-800 border-b pb-2">2. Configurar Dify (IA)</h3>
-                     <p className="text-sm text-gray-600">Para onde os arquivos serão enviados.</p>
-                     <ul className="text-sm list-disc pl-5 space-y-1 text-gray-700">
-                         <li>Acesse seu projeto no Dify.</li>
-                         <li>Vá em <strong>Knowledge &gt; API</strong>.</li>
-                         <li>Copie a <strong>API Key</strong> e o <strong>API Base URL</strong>.</li>
-                         <li>O <strong>Dataset ID</strong> está na URL do seu conhecimento no navegador (ex: datasets/<u>seu-id-aqui</u>/documents).</li>
-                     </ul>
-                 </div>
-
-                 <div className="space-y-2">
-                     <h3 className="font-bold text-gray-800 border-b pb-2 text-red-600">3. Configurar Gemini (Resumos) - ERRO 403?</h3>
-                     <p className="text-sm text-gray-600">Se você ver "API Key Leaked" ou erro 403, sua chave foi bloqueada.</p>
-                     <ul className="text-sm list-disc pl-5 space-y-1 text-gray-700">
-                         <li>Acesse o <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-blue-600 underline">Google AI Studio</a>.</li>
-                         <li>Clique em <strong>Create API Key</strong>.</li>
-                         <li><strong>IMPORTANTE:</strong> Não compartilhe essa chave. Cole-a nas configurações do App.</li>
-                         <li>O erro 403 só desaparece com uma chave NOVA.</li>
-                     </ul>
-                 </div>
-              </div>
-              <div className="bg-gray-50 p-4 text-right">
-                  <button onClick={() => setIsHelpOpen(false)} className="px-4 py-2 bg-blue-600 text-white rounded font-bold">Entendi</button>
-              </div>
-           </div>
-        </div>
-      )}
-
       {/* Top Bar */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4">
          
@@ -147,14 +93,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
          </div>
 
          <div className="flex gap-2 items-center">
-            <button 
-                onClick={() => setIsHelpOpen(true)}
-                className="w-9 h-9 rounded-full bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-600 flex items-center justify-center transition border border-gray-200"
-                title="Tutorial de Configuração"
-            >
-                <i className="fas fa-question"></i>
-            </button>
-
+            
             {!isConnected ? (
                 <button onClick={onConnectDrive} className="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 font-bold text-sm flex items-center gap-2 shadow-sm transition">
                     <img src="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg" alt="Drive" className="w-5 h-5"/>
