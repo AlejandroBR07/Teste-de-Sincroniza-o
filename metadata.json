@@ -1,5 +1,5 @@
 {
-  "name": "DocuSync - Drive to Dify",
+  "name": "DocSync - Drive to Dify",
   "description": "A dashboard to synchronize Google Docs from Drive to Dify Knowledge Base automatically or manually.",
   "requestFramePermissions": []
 }
