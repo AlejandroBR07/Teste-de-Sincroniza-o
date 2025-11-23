@@ -1,17 +1,16 @@
+
 import { GoogleGenAI } from "@google/genai";
-import { GEMINI_API_KEY } from "../constants";
 
-// Ensure the API key is set in the environment simulation
-if (!(window as any).process) {
-    (window as any).process = { env: { API_KEY: GEMINI_API_KEY } };
-}
+export const generateDocumentSummary = async (content: string, apiKey: string): Promise<string> => {
+  if (!apiKey) {
+    return "Resumo indisponível (Configure a Gemini API Key).";
+  }
 
-const ai = new GoogleGenAI({ apiKey: (window as any).process.env.API_KEY });
-
-export const generateDocumentSummary = async (content: string): Promise<string> => {
   try {
+    const ai = new GoogleGenAI({ apiKey });
     const model = 'gemini-2.5-flash';
-    // Clean content to avoid token limits on very large docs
+    
+    // Limita o tamanho para evitar estourar tokens em arquivos gigantes
     const safeContent = content.substring(0, 10000);
     
     const response = await ai.models.generateContent({
