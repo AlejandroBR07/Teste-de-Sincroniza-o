@@ -15,8 +15,6 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Install Dependencies
-        # AQUI ESTAVA O ERRO: Mudamos de 'npm ci' para 'npm install'
-        # npm install gera o package-lock.json se ele não existir.
         run: npm install
 
       - name: Build
@@ -25,4 +23,5 @@ jobs:
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4
         with:
+          branch: gh-pages
           folder: dist
