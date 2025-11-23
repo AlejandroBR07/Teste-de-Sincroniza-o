@@ -10,9 +10,7 @@ export default defineConfig({
     outDir: 'dist',
     assetsDir: 'assets',
     sourcemap: false,
-    // Aumentar o limite de aviso de tamanho de chunk para evitar alertas no log
     chunkSizeWarningLimit: 1000,
-    // Garantir que o diretório de saída esteja limpo antes de construir
     emptyOutDir: true
   }
 })
