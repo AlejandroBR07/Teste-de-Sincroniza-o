@@ -14,10 +14,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Install and Build
-        run: |
-          npm ci
-          npm run build
+      - name: Install Dependencies
+        # AQUI ESTAVA O ERRO: Mudamos de 'npm ci' para 'npm install'
+        # npm install gera o package-lock.json se ele não existir.
+        run: npm install
+
+      - name: Build
+        run: npm run build
 
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4
