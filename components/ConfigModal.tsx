@@ -88,16 +88,20 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClos
             <div className="space-y-4">
                 <div>
                     <label className="block text-sm font-bold text-gray-700 mb-1">
-                        Google API Key <span className="text-red-500">*</span>
+                        Google API Key (Cloud Console) <span className="text-red-500">*</span>
                     </label>
                     <input 
                     type="password" 
                     value={localConfig.googleApiKey || ''}
                     onChange={(e) => setLocalConfig({...localConfig, googleApiKey: e.target.value})}
-                    placeholder="AIzaSy..."
+                    placeholder="AIzaSy... (Chave do Google Cloud, não do Gemini)"
                     className="w-full p-3 border border-gray-300 bg-gray-50 text-gray-900 rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm shadow-inner"
                     />
-                    <p className="text-xs text-gray-500 mt-1">A mesma chave que você usa para o Gemini costuma funcionar (se a Drive API estiver ativada).</p>
+                    
+                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
+                        <strong>Atenção:</strong> A chave do Gemini (AI Studio) <u>NÃO FUNCIONA</u> aqui.
+                        Você deve ir ao <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer" className="underline font-bold">Google Cloud Console</a>, criar uma chave de API e ativar a "Google Drive API" na Biblioteca.
+                    </div>
                 </div>
                 <div>
                     <label className="block text-sm font-bold text-gray-700 mb-1">
