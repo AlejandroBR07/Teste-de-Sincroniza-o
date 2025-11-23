@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { AppConfig, DifyProfile } from '../types';
 import { DEFAULT_DIFY_BASE_URL } from '../constants';
@@ -14,6 +13,9 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClos
   const [localConfig, setLocalConfig] = useState<AppConfig>(config);
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'google' | 'agents' | 'general'>('agents');
+  
+  // Estado para controlar qual ajuda está aberta ('none', 'dify', 'google', 'gemini')
+  const [activeHelp, setActiveHelp] = useState<string | null>(null);
 
   useEffect(() => {
     setLocalConfig(config);
@@ -61,6 +63,10 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClos
           ...prev,
           profiles: prev.profiles.map(p => p.id === id ? { ...p, [field]: value } : p)
       }));
+  };
+
+  const toggleHelp = (section: string) => {
+      setActiveHelp(activeHelp === section ? null : section);
   };
 
   const currentProfile = localConfig.profiles.find(p => p.id === editingProfileId) || localConfig.profiles[0];
@@ -153,36 +159,53 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClos
                                         <i className="fas fa-trash"></i>
                                     </button>
                                 </div>
-
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Dify API Key</label>
-                                    <input 
-                                        type="password" 
-                                        value={currentProfile.difyApiKey}
-                                        onChange={(e) => updateProfile(currentProfile.id, 'difyApiKey', e.target.value)}
-                                        className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
-                                        placeholder="dataset-..."
-                                    />
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Dataset ID</label>
-                                        <input 
-                                            type="text" 
-                                            value={currentProfile.difyDatasetId}
-                                            onChange={(e) => updateProfile(currentProfile.id, 'difyDatasetId', e.target.value)}
-                                            className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
-                                        />
+                                
+                                <div className="border-t border-gray-100 my-2 pt-2">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className="block text-xs font-bold text-gray-500 uppercase">Credenciais do Dify</label>
+                                        <button onClick={() => toggleHelp('dify')} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                                            <i className="fas fa-question-circle"></i> Onde pegar isso?
+                                        </button>
                                     </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Base URL</label>
-                                        <input 
-                                            type="text" 
-                                            value={currentProfile.difyBaseUrl}
-                                            onChange={(e) => updateProfile(currentProfile.id, 'difyBaseUrl', e.target.value)}
-                                            className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                                        />
+
+                                    {activeHelp === 'dify' && (
+                                        <div className="bg-blue-50 p-3 rounded text-xs text-blue-800 mb-3 border border-blue-100">
+                                            <strong>Passo a Passo:</strong>
+                                            <ol className="list-decimal pl-4 mt-1 space-y-1">
+                                                <li>Acesse seu projeto no Dify.</li>
+                                                <li>No menu lateral, vá em <strong>Knowledge &gt; API</strong>.</li>
+                                                <li>Lá você encontrará a <strong>API Key</strong> e a <strong>API Base URL</strong>.</li>
+                                                <li>O <strong>Dataset ID</strong> fica na URL do navegador quando você acessa a base de conhecimento (ex: <code>.../datasets/<strong>SEU-ID</strong>/documents</code>).</li>
+                                            </ol>
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-3">
+                                        <div>
+                                            <input 
+                                                type="password" 
+                                                value={currentProfile.difyApiKey}
+                                                onChange={(e) => updateProfile(currentProfile.id, 'difyApiKey', e.target.value)}
+                                                className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
+                                                placeholder="API Key (dataset-...)"
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <input 
+                                                type="text" 
+                                                value={currentProfile.difyDatasetId}
+                                                onChange={(e) => updateProfile(currentProfile.id, 'difyDatasetId', e.target.value)}
+                                                className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
+                                                placeholder="Dataset ID"
+                                            />
+                                            <input 
+                                                type="text" 
+                                                value={currentProfile.difyBaseUrl}
+                                                onChange={(e) => updateProfile(currentProfile.id, 'difyBaseUrl', e.target.value)}
+                                                className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                                placeholder="Base URL"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -198,7 +221,26 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClos
                          </div>
 
                         <div>
-                            <h4 className="font-bold text-gray-700 mb-2 border-b pb-1">Google Drive (Acesso a Arquivos)</h4>
+                            <div className="flex items-center justify-between mb-2 border-b pb-1">
+                                <h4 className="font-bold text-gray-700">Google Drive (Acesso a Arquivos)</h4>
+                                <button onClick={() => toggleHelp('google')} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                                    <i className="fas fa-question-circle"></i> Como configurar?
+                                </button>
+                            </div>
+                            
+                            {activeHelp === 'google' && (
+                                <div className="bg-blue-50 p-3 rounded text-xs text-blue-800 mb-3 border border-blue-100">
+                                    <ol className="list-decimal pl-4 mt-1 space-y-1">
+                                        <li>Vá no <a href="https://console.cloud.google.com/" target="_blank" className="underline font-bold">Google Cloud Console</a>.</li>
+                                        <li>Crie um projeto e ative a <strong>"Google Drive API"</strong> em "Enabled APIs".</li>
+                                        <li>Em <strong>Credentials</strong>, crie uma <strong>API Key</strong>. Cole abaixo.</li>
+                                        <li>Crie um <strong>OAuth Client ID</strong> (Web App).</li>
+                                        <li>Em "Authorized JavaScript origins", adicione EXATAMENTE: <code className="bg-white px-1 border rounded">{window.location.origin}</code></li>
+                                        <li>Cole o Client ID abaixo.</li>
+                                    </ol>
+                                </div>
+                            )}
+
                             <div className="space-y-3">
                                 <div>
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Google Cloud API Key</label>
@@ -223,7 +265,24 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClos
                         </div>
 
                         <div>
-                            <h4 className="font-bold text-gray-700 mb-2 border-b pb-1 mt-6">Gemini AI (Resumos)</h4>
+                             <div className="flex items-center justify-between mb-2 border-b pb-1 mt-6">
+                                <h4 className="font-bold text-gray-700">Gemini AI (Resumos)</h4>
+                                <button onClick={() => toggleHelp('gemini')} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                                    <i className="fas fa-question-circle"></i> Erro 403?
+                                </button>
+                            </div>
+
+                            {activeHelp === 'gemini' && (
+                                <div className="bg-red-50 p-3 rounded text-xs text-red-800 mb-3 border border-red-100">
+                                    <p><strong>Se aparecer "Key Leaked" ou Erro 403:</strong></p>
+                                    <ul className="list-disc pl-4 mt-1 space-y-1">
+                                        <li>Sua chave atual foi bloqueada pelo Google.</li>
+                                        <li>Gere uma nova em <a href="https://aistudio.google.com/app/apikey" target="_blank" className="underline font-bold">Google AI Studio</a>.</li>
+                                        <li>Cole a nova chave abaixo.</li>
+                                    </ul>
+                                </div>
+                            )}
+
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Gemini API Key (AI Studio)</label>
                                 <input 
@@ -231,7 +290,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClos
                                     value={localConfig.geminiApiKey}
                                     onChange={(e) => setLocalConfig({...localConfig, geminiApiKey: e.target.value})}
                                     className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
-                                    placeholder="AIzaSy... (Chave que gera no aistudio.google.com)"
+                                    placeholder="AIzaSy... (Chave do AI Studio)"
                                 />
                                 <p className="text-xs text-gray-500 mt-1">Necessário para gerar resumos automáticos dos documentos.</p>
                             </div>
