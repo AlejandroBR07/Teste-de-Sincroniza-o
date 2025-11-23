@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { DocFile, AppConfig, SyncLog } from './types';
 import { ConfigModal } from './components/ConfigModal';
@@ -29,6 +28,7 @@ const App: React.FC = () => {
         difyDatasetId: DEFAULT_DIFY_DATASET_ID,
         difyBaseUrl: DEFAULT_DIFY_BASE_URL,
         googleClientId: '',
+        googleApiKey: '',
         autoSync: false,
         syncInterval: 5
       };
@@ -109,10 +109,21 @@ const App: React.FC = () => {
                     });
                 });
                 
+                // INICIALIZAÇÃO CORRIGIDA: Usa API Key se disponível
                 await window.gapi.client.init({
+                    apiKey: configRef.current.googleApiKey, // IMPORTANTE
                     discoveryDocs: [DISCOVERY_DOC],
                 });
+                
+                // Força carregamento específico da API do Drive se o Discovery falhar
+                try {
+                   await window.gapi.client.load('drive', 'v3');
+                } catch (e) {
+                   console.warn("Aviso no carregamento explícito do Drive V3", e);
+                }
+
                 setGapiInited(true);
+                console.log("--- DEBUG: GAPI INITED ---");
             }
 
             if (!tokenClient && configRef.current.googleClientId) {
@@ -133,7 +144,8 @@ const App: React.FC = () => {
                 clearInterval(intervalId);
             }
         } catch (error: any) {
-            console.error(error);
+            console.error("--- ERRO FATAL GAPI ---", error);
+            addLog(`Erro na inicialização do Google: ${error.message || error}`, 'erro');
         }
       }
     };
@@ -150,6 +162,11 @@ const App: React.FC = () => {
       setIsConfigOpen(true);
       return;
     }
+    // Verifica se a API Key foi configurada, pois é crucial para listar arquivos em alguns projetos
+    if (!config.googleApiKey) {
+        addLog("Aviso: 'Google API Key' não configurada. A listagem pode falhar.", 'info');
+    }
+
     if (tokenClient) {
         tokenClient.requestAccessToken({ prompt: 'consent' });
     }
@@ -160,6 +177,7 @@ const App: React.FC = () => {
 
     try {
         addLog("Listando documentos do Drive (Docs, Word, PDF, Texto)...", 'info');
+        console.log("--- DEBUG: INICIANDO FETCH FILES ---");
         
         // ALTERAÇÃO: Filtro expandido. Mostra tudo que não é pasta e não é lixo.
         const query = "trashed = false and mimeType != 'application/vnd.google-apps.folder'";
@@ -171,6 +189,8 @@ const App: React.FC = () => {
             'supportsAllDrives': true,
             'includeItemsFromAllDrives': true
         });
+
+        console.log("--- DEBUG: RESPOSTA DO DRIVE ---", response);
 
         const driveFiles = response.result.files;
         
@@ -210,10 +230,12 @@ const App: React.FC = () => {
             });
             addLog(`${driveFiles.length} arquivos encontrados.`, 'info');
         } else {
-            addLog("Nenhum arquivo encontrado. O Drive parece vazio.", 'info');
+            console.warn("--- DEBUG: LISTA VAZIA ---", response);
+            addLog("Nenhum arquivo encontrado. O Drive parece vazio ou a API Key está inválida.", 'info');
         }
 
     } catch (err: any) {
+        console.error("--- DEBUG: ERRO API DRIVE ---", err);
         addLog(`Erro API Drive: ${err.result?.error?.message || err.message}`, 'erro');
         if (err.status === 401 || err.status === 403) {
             setIsConnected(false);
