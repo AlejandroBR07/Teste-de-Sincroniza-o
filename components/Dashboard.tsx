@@ -6,6 +6,7 @@ interface DashboardProps {
   isSyncing: boolean;
   onSyncAll: () => void;
   onConnectDrive: () => void;
+  onToggleWatch: (fileId: string) => void; // Novo callback
   isConnected: boolean;
   logs: SyncLog[];
 }
@@ -15,6 +16,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   isSyncing, 
   onSyncAll, 
   onConnectDrive, 
+  onToggleWatch,
   isConnected,
   logs 
 }) => {
@@ -22,9 +24,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const getStatusBadge = (status: DocFile['status']) => {
     switch (status) {
       case 'sincronizado':
-        return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800 border border-green-200"><i className="fas fa-check mr-1"></i> Sincronizado</span>;
+        return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800 border border-green-200"><i className="fas fa-check mr-1"></i> Sync</span>;
       case 'sincronizando':
-        return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 animate-pulse border border-blue-200"><i className="fas fa-spinner fa-spin mr-1"></i> Enviando...</span>;
+        return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 animate-pulse border border-blue-200"><i className="fas fa-spinner fa-spin mr-1"></i> Enviando</span>;
       case 'erro':
         return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800 border border-red-200"><i className="fas fa-times mr-1"></i> Erro</span>;
       default:
@@ -37,8 +39,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* Action Bar */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
-            <h2 className="text-2xl font-bold text-gray-800">Monitor do Drive</h2>
-            <p className="text-sm text-gray-500">Acompanhamento e envio automático de documentos para o Dify.</p>
+            <h2 className="text-2xl font-bold text-gray-800">Painel de Controle</h2>
+            <p className="text-sm text-gray-500">Selecione quais documentos devem ser enviados automaticamente.</p>
         </div>
         <div className="flex gap-3">
           {!isConnected ? (
@@ -56,7 +58,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium text-white transition shadow-md ${isSyncing ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
             >
               <i className={`fas fa-sync ${isSyncing ? 'fa-spin' : ''}`}></i>
-              {isSyncing ? 'Sincronizando...' : 'Sincronizar Agora'}
+              {isSyncing ? 'Sincronizando...' : 'Sincronizar Pendentes'}
             </button>
           )}
         </div>
@@ -67,46 +69,57 @@ export const Dashboard: React.FC<DashboardProps> = ({
         {/* File List */}
         <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
           <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-             <h3 className="font-semibold text-gray-700"><i className="fas fa-file-alt mr-2 text-blue-500"></i>Documentos Detectados</h3>
-             <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">{files.length} arquivos</span>
+             <h3 className="font-semibold text-gray-700"><i className="fas fa-file-alt mr-2 text-blue-500"></i>Documentos</h3>
+             <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">{files.length} detectados</span>
           </div>
           <div className="flex-1 overflow-y-auto min-h-[300px]">
             {files.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-gray-400 py-10">
                     <i className="fas fa-folder-open text-4xl mb-3 opacity-30"></i>
-                    <p>Nenhum documento encontrado.</p>
-                    <p className="text-sm mt-1">{!isConnected ? 'Conecte o Drive para listar arquivos.' : 'Sua pasta raiz do Drive parece vazia de Docs.'}</p>
+                    <p>Nenhum documento listado.</p>
+                    <p className="text-sm mt-1">{!isConnected ? 'Aguardando conexão...' : 'Verifique se há Google Docs no seu Drive.'}</p>
                 </div>
             ) : (
                 <table className="w-full text-left border-collapse">
                 <thead className="bg-gray-50 sticky top-0 z-10">
                     <tr>
-                    <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Nome do Documento</th>
-                    <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Modificado em</th>
-                    <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Status</th>
+                    <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center w-16">Auto</th>
+                    <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Documento</th>
+                    <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                     {files.map(file => (
-                    <tr key={file.id} className="hover:bg-gray-50 transition">
+                    <tr key={file.id} className={`hover:bg-gray-50 transition ${file.watched ? 'bg-blue-50/30' : ''}`}>
+                        <td className="p-4 text-center">
+                            {/* Toggle Switch */}
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input 
+                                    type="checkbox" 
+                                    className="sr-only peer" 
+                                    checked={file.watched}
+                                    onChange={() => onToggleWatch(file.id)}
+                                />
+                                <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                            </label>
+                        </td>
                         <td className="p-4">
                             <div className="flex items-center gap-3">
                                 <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center text-blue-600 flex-shrink-0">
                                     <i className={`fas ${file.mimeType.includes('pdf') ? 'fa-file-pdf' : 'fa-file-word'}`}></i>
                                 </div>
                                 <div className="min-w-0">
-                                    <p className="font-medium text-gray-800 truncate max-w-xs" title={file.name}>{file.name}</p>
-                                    <a href={file.webViewLink} target="_blank" rel="noreferrer" className="text-xs text-blue-500 hover:underline flex items-center gap-1">
-                                      Abrir no Drive <i className="fas fa-external-link-alt text-[10px]"></i>
-                                    </a>
+                                    <p className="font-medium text-gray-800 truncate max-w-xs text-sm" title={file.name}>{file.name}</p>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                        <span className="text-[10px] text-gray-400">{new Date(file.modifiedTime).toLocaleDateString()}</span>
+                                        <a href={file.webViewLink} target="_blank" rel="noreferrer" className="text-[10px] text-blue-500 hover:underline">
+                                        Abrir <i className="fas fa-external-link-alt text-[8px]"></i>
+                                        </a>
+                                    </div>
                                 </div>
                             </div>
                         </td>
-                        <td className="p-4 text-sm text-gray-500 whitespace-nowrap">
-                            {new Date(file.modifiedTime).toLocaleDateString('pt-BR')} <br/>
-                            <span className="text-xs opacity-75">{new Date(file.modifiedTime).toLocaleTimeString('pt-BR')}</span>
-                        </td>
-                        <td className="p-4 text-right whitespace-nowrap">
+                        <td className="p-4 whitespace-nowrap">
                             {getStatusBadge(file.status)}
                         </td>
                     </tr>
@@ -120,11 +133,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
         {/* Activity Logs */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-[500px] lg:h-auto">
           <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-             <h3 className="font-semibold text-gray-700"><i className="fas fa-history mr-2 text-purple-500"></i>Log de Atividades</h3>
+             <h3 className="font-semibold text-gray-700"><i className="fas fa-history mr-2 text-purple-500"></i>Log</h3>
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50 font-mono text-xs">
             {logs.length === 0 ? (
-                <p className="text-center text-gray-400 italic mt-10">Nenhuma atividade registrada ainda...</p>
+                <p className="text-center text-gray-400 italic mt-10">Logs aparecerão aqui...</p>
             ) : (
                 logs.map(log => (
                     <div key={log.id} className={`p-3 rounded-lg border shadow-sm ${
@@ -137,7 +150,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 log.type === 'erro' ? 'text-red-600' : 
                                 log.type === 'sucesso' ? 'text-green-600' : 'text-blue-600'
                             }`}>{log.type}</span>
-                            <span>{log.timestamp.toLocaleTimeString('pt-BR')}</span>
+                            <span>{log.timestamp.toLocaleTimeString()}</span>
                         </div>
                         <p className="break-words leading-relaxed">{log.message}</p>
                     </div>
