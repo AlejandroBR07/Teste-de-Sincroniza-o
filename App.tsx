@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { DocFile, AppConfig, SyncLog } from './types';
 import { ConfigModal } from './components/ConfigModal';
@@ -18,9 +19,10 @@ const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
 const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
 const STORAGE_KEY_CONFIG = 'docusync_config_v1';
 const STORAGE_KEY_WATCHED = 'docusync_watched_files';
+const STORAGE_KEY_SYNC_HISTORY = 'docusync_sync_history'; // Armazenar ultima sync persistente
 
 const App: React.FC = () => {
-  // 1. Carregar Config do LocalStorage ou usar padrão
+  // 1. Carregar Config
   const [config, setConfig] = useState<AppConfig>(() => {
       const saved = localStorage.getItem(STORAGE_KEY_CONFIG);
       return saved ? JSON.parse(saved) : {
@@ -38,6 +40,12 @@ const App: React.FC = () => {
       const saved = localStorage.getItem(STORAGE_KEY_WATCHED);
       return saved ? JSON.parse(saved) : [];
   });
+  
+  // Mapa de ID -> Data de Ultima Sincronização
+  const [syncHistory, setSyncHistory] = useState<Record<string, string>>(() => {
+      const saved = localStorage.getItem(STORAGE_KEY_SYNC_HISTORY);
+      return saved ? JSON.parse(saved) : {};
+  });
 
   const [files, setFiles] = useState<DocFile[]>([]);
   const [logs, setLogs] = useState<SyncLog[]>([]);
@@ -50,28 +58,27 @@ const App: React.FC = () => {
   
   const configRef = useRef(config);
   
-  // Salvar Config sempre que mudar
   useEffect(() => {
     configRef.current = config;
     localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(config));
   }, [config]);
 
-  // Resetar tentativas se a configuração de chaves mudar (Correção para não precisar F5)
   useEffect(() => {
     if (config.googleApiKey || config.googleClientId) {
         if (initAttempts > 0 && !gapiInited) {
-            console.log("Configuração alterada, reiniciando tentativas de conexão...");
-            setInitAttempts(0); // Reseta o contador para tentar novamente
+            setInitAttempts(0);
         }
     }
   }, [config.googleApiKey, config.googleClientId]);
 
-  // Salvar Lista de Monitorados sempre que mudar
   useEffect(() => {
       localStorage.setItem(STORAGE_KEY_WATCHED, JSON.stringify(watchedFileIds));
   }, [watchedFileIds]);
+  
+  useEffect(() => {
+      localStorage.setItem(STORAGE_KEY_SYNC_HISTORY, JSON.stringify(syncHistory));
+  }, [syncHistory]);
 
-  // Helper to add logs
   const addLog = (message: string, type: 'info' | 'sucesso' | 'erro' = 'info') => {
     setLogs(prev => [{
       id: Math.random().toString(36).substr(2, 9),
@@ -81,81 +88,48 @@ const App: React.FC = () => {
     }, ...prev]);
   };
 
-  // Toggle Watch Status
   const toggleFileWatch = (fileId: string) => {
       setWatchedFileIds(prev => {
           const exists = prev.includes(fileId);
-          let newIds;
-          if (exists) {
-              newIds = prev.filter(id => id !== fileId);
-              addLog(`Arquivo removido do monitoramento automático.`, 'info');
-          } else {
-              newIds = [...prev, fileId];
-              addLog(`Arquivo adicionado ao monitoramento automático.`, 'info');
-          }
-          return newIds;
+          return exists ? prev.filter(id => id !== fileId) : [...prev, fileId];
       });
-
-      // Atualiza visualmente na lista de arquivos atual
-      setFiles(prev => prev.map(f => f.id === fileId ? { ...f, watched: !f.watched } : f));
+      // A atualização do status visual será feita pelo fetchFiles ou pelo efeito de mudança
+      setTimeout(() => fetchFilesRef.current(), 100);
   };
 
-  // Inicialização do Google
+  // Inicialização do Google (Mantido igual, funciona bem)
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval>;
 
     const checkAndInitGoogle = async () => {
-      // Se já tentamos 10 vezes e falhou, para de tentar para não travar o navegador
-      if (initAttempts > 10) {
-          clearInterval(intervalId);
-          return;
-      }
+      if (initAttempts > 10) { clearInterval(intervalId); return; }
 
       if (window.gapi && window.google && window.google.accounts) {
-        if (gapiInited && tokenClient) {
-            clearInterval(intervalId);
-            return;
-        }
+        if (gapiInited && tokenClient) { clearInterval(intervalId); return; }
 
         try {
             if (!gapiInited) {
-                // Incrementa contador
                 setInitAttempts(prev => prev + 1);
-
                 await new Promise<void>((resolve, reject) => {
-                    window.gapi.load('client', {
-                        callback: resolve,
-                        onerror: reject
-                    });
+                    window.gapi.load('client', { callback: resolve, onerror: reject });
                 });
                 
-                // Validação básica antes de chamar
-                if (!configRef.current.googleApiKey) {
-                    // console.warn("Aguardando API Key...");
-                    return; 
-                }
+                if (!configRef.current.googleApiKey) return; 
 
-                console.log("--- DEBUG: TENTANDO INICIAR GAPI ---");
-                
                 try {
                     await window.gapi.client.init({
                         apiKey: configRef.current.googleApiKey, 
                         discoveryDocs: [DISCOVERY_DOC],
                     });
                     setGapiInited(true);
-                    console.log("--- DEBUG: GAPI INITED COM SUCESSO ---");
                 } catch (initError: any) {
-                    console.error("--- ERRO API KEY ---", initError);
-                    
-                    // Tratamento específico para o erro 502/Discovery que o usuário relatou
                     if (initError?.result?.error?.code === 502 || initError?.message?.includes('discovery')) {
-                        addLog("ERRO CRÍTICO: Sua 'Google API Key' é inválida para o Drive.", 'erro');
-                        addLog("Não use a chave do Gemini/AI Studio. Use uma chave do Google Cloud Console com Drive API ativada.", 'erro');
-                        clearInterval(intervalId); // Para de tentar imediatamente
-                        setIsConfigOpen(true); // Abre o modal para ele corrigir
+                        addLog("ERRO CRÍTICO: Chave API Google inválida.", 'erro');
+                        clearInterval(intervalId);
+                        setIsConfigOpen(true);
                         return;
                     }
-                    throw initError; // Repassa outros erros
+                    throw initError;
                 }
             }
 
@@ -165,34 +139,20 @@ const App: React.FC = () => {
                     scope: SCOPES,
                     callback: async (resp: any) => {
                         if (resp.error) {
-                            addLog(`Erro na autenticação: ${resp.error}`, 'erro');
+                            addLog(`Erro OAuth: ${resp.error}`, 'erro');
                             return;
                         }
-                        
-                        // CORREÇÃO CRÍTICA: Define o token no cliente GAPI
-                        if (window.gapi.client) {
-                            window.gapi.client.setToken(resp);
-                            console.log("--- DEBUG: TOKEN SET ON GAPI CLIENT ---");
-                        }
-
+                        if (window.gapi.client) window.gapi.client.setToken(resp);
                         setIsConnected(true);
-                        addLog("Conexão autorizada! Recuperando arquivos...", 'sucesso');
-                        
-                        // Pequeno delay para garantir propagação do token
-                        setTimeout(() => {
-                            fetchFilesRef.current(); 
-                        }, 500);
+                        addLog("Conexão autorizada!", 'sucesso');
+                        setTimeout(() => fetchFilesRef.current(), 500);
                     },
                 });
                 setTokenClient(client);
                 clearInterval(intervalId);
             }
         } catch (error: any) {
-            console.error("--- ERRO GERAL ---", error);
-            if (!error?.message?.includes('Cross-Origin-Opener-Policy')) {
-                 // Só loga se não for o erro comum de cross-origin
-                 // addLog(`Tentativa de conexão falhou.`, 'info');
-            }
+             // Ignora erro silencioso
         }
       }
     };
@@ -204,38 +164,20 @@ const App: React.FC = () => {
   const fetchFilesRef = useRef(() => {});
 
   const handleConnectDrive = () => {
-    if (!config.googleClientId) {
-      addLog("Erro: 'Client ID' do Google não configurado.", 'erro');
-      setIsConfigOpen(true);
-      return;
-    }
-
-    if (!config.googleApiKey) {
-        addLog("Erro: 'API Key' do Google não configurada.", 'erro');
+    if (!config.googleClientId || !config.googleApiKey) {
+        addLog("Configuração incompleta. Verifique as chaves.", 'erro');
         setIsConfigOpen(true);
         return;
     }
-    
-    if (tokenClient) {
-        tokenClient.requestAccessToken({ prompt: 'consent' });
-    } else {
-        addLog("Inicializando scripts... Se demorar, verifique sua API Key.", 'info');
-        // Força reset para tentar de novo se o usuário clicou
-        if (initAttempts > 5) setInitAttempts(0);
-    }
+    if (tokenClient) tokenClient.requestAccessToken({ prompt: 'consent' });
+    else if (initAttempts > 5) setInitAttempts(0);
   };
 
   const fetchFiles = useCallback(async () => {
-    if (!gapiInited) {
-        addLog("Erro: API do Drive não inicializada (Verifique sua API Key).", 'erro');
-        return; 
-    }
+    if (!gapiInited) return;
 
     try {
-        addLog("Buscando documentos no Drive...", 'info');
-        console.log("--- DEBUG: INICIANDO FETCH FILES ---");
-        
-        // Query filtrando apenas Docs, PDFs, Texto e Word, excluindo lixeira
+        console.log("--- Atualizando Lista de Arquivos ---");
         const query = "trashed = false and (mimeType = 'application/vnd.google-apps.document' or mimeType = 'application/pdf' or mimeType = 'text/plain' or mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')";
 
         const response = await window.gapi.client.drive.files.list({
@@ -246,30 +188,38 @@ const App: React.FC = () => {
             'includeItemsFromAllDrives': true
         });
 
-        console.log("--- DEBUG: RESPOSTA DO DRIVE ---", response);
-
         const driveFiles = response.result.files;
         
         if (driveFiles && driveFiles.length > 0) {
             setFiles(currentFiles => {
                 return driveFiles.map((dFile: any) => {
-                    const existing = currentFiles.find(f => f.id === dFile.id);
                     const isWatched = watchedFileIds.includes(dFile.id);
+                    const lastSyncTimeStr = syncHistory[dFile.id];
                     
-                    let status: DocFile['status'] = 'pendente';
+                    let status: DocFile['status'] = 'ignorado'; // Padrão agora é ignorado
                     
-                    if (existing) {
-                         if (existing.status === 'sincronizado' && existing.lastSynced) {
-                             const modTime = new Date(dFile.modifiedTime).getTime();
-                             const syncTime = new Date(existing.lastSynced).getTime();
-                             if (modTime > syncTime) {
-                                 status = 'pendente'; 
-                             } else {
-                                 status = 'sincronizado';
-                             }
-                         } else {
-                             status = existing.status;
-                         }
+                    if (isWatched) {
+                        if (!lastSyncTimeStr) {
+                            status = 'pendente'; // Nunca sincronizou
+                        } else {
+                            const modTime = new Date(dFile.modifiedTime).getTime();
+                            const syncTime = new Date(lastSyncTimeStr).getTime();
+                            // Se modificação for mais recente que o sync, está pendente
+                            // Damos uma margem de 1 minuto para evitar loops de relógio desajustado
+                            if (modTime > (syncTime + 60000)) {
+                                status = 'pendente';
+                            } else {
+                                status = 'sincronizado';
+                            }
+                        }
+                    } else {
+                        status = 'ignorado';
+                    }
+
+                    // Se estava com status de erro ou sincronizando no estado anterior, mantém visualmente até resolver
+                    const existing = currentFiles.find(f => f.id === dFile.id);
+                    if (existing && existing.status === 'sincronizando') {
+                        status = 'sincronizando';
                     }
 
                     return {
@@ -279,27 +229,20 @@ const App: React.FC = () => {
                         modifiedTime: dFile.modifiedTime,
                         webViewLink: dFile.webViewLink,
                         status: status,
-                        lastSynced: existing?.lastSynced,
+                        lastSynced: lastSyncTimeStr,
                         watched: isWatched
                     } as DocFile;
                 });
             });
-            addLog(`${driveFiles.length} documentos encontrados.`, 'info');
-        } else {
-            console.warn("--- DEBUG: LISTA VAZIA ---", response);
-            addLog("Nenhum documento de texto encontrado.", 'info');
         }
-
     } catch (err: any) {
-        console.error("--- DEBUG: ERRO API DRIVE ---", err);
-        addLog(`Erro ao listar arquivos: ${err.result?.error?.message || err.message}`, 'erro');
-        
-        if (err.status === 401 || err.status === 403) {
+        console.error("Erro fetch:", err);
+        if (err.status === 401) {
             setIsConnected(false);
-            addLog("Sessão expirada. Por favor conecte novamente.", 'erro');
+            addLog("Sessão expirada.", 'erro');
         }
     }
-  }, [gapiInited, watchedFileIds]);
+  }, [gapiInited, watchedFileIds, syncHistory]);
 
   useEffect(() => {
     fetchFilesRef.current = fetchFiles;
@@ -308,69 +251,42 @@ const App: React.FC = () => {
   const getFileContent = async (fileId: string, mimeType: string): Promise<string> => {
       try {
           if (mimeType.includes('application/vnd.google-apps')) {
-              // Documentos do Google (Docs, Sheets, Slides) precisam ser exportados
               let exportMimeType = 'text/plain';
               if (mimeType.includes('spreadsheet')) exportMimeType = 'text/csv';
-              
-              const response = await window.gapi.client.drive.files.export({
-                  fileId: fileId,
-                  mimeType: exportMimeType
-              });
+              const response = await window.gapi.client.drive.files.export({ fileId, mimeType: exportMimeType });
               return response.body;
           } else {
-              // Arquivos binários (PDF, Word, Txt) podem ser baixados diretamente
-              const response = await window.gapi.client.drive.files.get({
-                  fileId: fileId,
-                  alt: 'media'
-              });
+              const response = await window.gapi.client.drive.files.get({ fileId, alt: 'media' });
               return response.body;
           }
       } catch (e: any) {
-          console.error("Erro download:", e);
-          throw new Error(`Erro ao baixar arquivo: ${e.result?.error?.message || e.message}`);
+          throw new Error(`Download falhou: ${e.message}`);
       }
   };
 
-  const handleSync = async (forceAll: boolean = false) => {
-    let targetFiles: DocFile[] = [];
-
-    if (forceAll) {
-        targetFiles = files.filter(f => f.status === 'pendente' || f.status === 'erro');
-    } else {
-        targetFiles = files.filter(f => f.watched && (f.status === 'pendente' || f.status === 'erro'));
-    }
-    
-    if (targetFiles.length === 0) {
-        if (forceAll) addLog("Nada novo para sincronizar.", 'info');
-        return;
-    }
-
-    setIsSyncing(true);
-    addLog(`Iniciando sincronização de ${targetFiles.length} arquivos...`, 'info');
-
-    for (const file of targetFiles) {
-        setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'sincronizando' } : f));
-        
-        try {
+  // Função core de sincronização (reutilizável)
+  const processSync = async (file: DocFile) => {
+      try {
+            setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'sincronizando' } : f));
+            
             const content = await getFileContent(file.id, file.mimeType);
 
-            if (!content || content.length === 0) {
-                throw new Error("Conteúdo vazio ou formato não suportado.");
-            }
+            if (!content || content.length === 0) throw new Error("Conteúdo vazio.");
 
+            // Resumo com Gemini (Opcional, falha silenciosa se der erro)
             let summary = "N/A";
             try {
-                // Tenta gerar resumo
-                summary = await generateDocumentSummary(content.substring(0, 30000));
-            } catch (sumErr) {
-                console.warn("Erro resumo:", sumErr);
-            }
+                if (config.googleApiKey) { // Usa a chave do Cloud ou tenta a do ambiente se configurada
+                     // Nota: geminiService usa process.env shim. 
+                     summary = await generateDocumentSummary(content.substring(0, 30000));
+                }
+            } catch (sumErr) { console.warn("Erro resumo:", sumErr); }
             
             const enhancedContent = `---
 Arquivo: ${file.name}
 Fonte: Google Drive
-Data: ${file.modifiedTime}
-Resumo: ${summary}
+Data Modificação: ${file.modifiedTime}
+Resumo Automático: ${summary}
 ---
 
 ${content}`;
@@ -378,8 +294,14 @@ ${content}`;
             const result = await syncFileToDify(enhancedContent, file.name, config);
             
             if (result.success) {
-                addLog(`[OK] ${file.name}`, 'sucesso');
-                setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'sincronizado', lastSynced: new Date().toISOString() } : f));
+                addLog(`[OK] ${file.name} atualizado no Dify.`, 'sucesso');
+                const now = new Date().toISOString();
+                
+                // Atualiza histórico persistente
+                setSyncHistory(prev => ({ ...prev, [file.id]: now }));
+                
+                // Atualiza estado local
+                setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'sincronizado', lastSynced: now } : f));
             } else {
                 throw new Error(result.message);
             }
@@ -388,20 +310,49 @@ ${content}`;
             addLog(`[ERRO] ${file.name}: ${err.message}`, 'erro');
             setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'erro' } : f));
         }
+  };
+
+  // Sincronizar Tudo (Forçado ou Auto)
+  const handleSyncAll = async (force: boolean = false) => {
+    // Se for forçado (botão), pega pendentes e erros que estão monitorados
+    // Se for auto, pega apenas pendentes monitorados
+    const candidates = files.filter(f => f.watched && (f.status === 'pendente' || f.status === 'erro'));
+    
+    if (candidates.length === 0) {
+        if (force) addLog("Todos os arquivos monitorados já estão atualizados.", 'info');
+        return;
     }
 
+    setIsSyncing(true);
+    addLog(`Iniciando sincronização de ${candidates.length} arquivos...`, 'info');
+
+    // Processa um por um para não floodar
+    for (const file of candidates) {
+        await processSync(file);
+    }
     setIsSyncing(false);
+  };
+
+  // Sincronizar Um (Raio)
+  const handleSyncOne = async (file: DocFile) => {
+      addLog(`Sincronizando manualmente: ${file.name}...`, 'info');
+      await processSync(file);
   };
 
   // Auto-Sync Loop
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
     if (config.autoSync && isConnected) {
-        addLog(`Auto-sync ativo. Ciclo: ${config.syncInterval}min`, 'info');
+        addLog(`Auto-sync ativo (${config.syncInterval}min). Monitorando alterações...`, 'info');
         
         interval = setInterval(() => {
+            // 1. Atualiza lista para ver se modificou algo no drive
             fetchFiles(); 
-            setTimeout(() => handleSync(false), 5000); 
+            
+            // 2. Se tiver algo pendente, dispara sync em breve
+            setTimeout(() => {
+                handleSyncAll(false);
+            }, 5000); 
         }, config.syncInterval * 60 * 1000); 
     }
     return () => clearInterval(interval);
@@ -424,8 +375,7 @@ ${content}`;
             
             <button 
                 onClick={() => setIsConfigOpen(true)}
-                className={`p-2 rounded-full transition relative ${!config.difyApiKey || !config.googleClientId ? 'bg-red-50 text-red-500' : 'text-gray-500 hover:bg-gray-100'}`}
-                title="Configurações"
+                className="p-2 text-gray-500 hover:bg-gray-100 rounded-full transition relative"
             >
                 <i className="fas fa-cog text-xl"></i>
             </button>
@@ -438,7 +388,8 @@ ${content}`;
             isSyncing={isSyncing}
             isConnected={isConnected}
             onConnectDrive={handleConnectDrive}
-            onSyncAll={() => handleSync(true)} // Botão manual força tudo
+            onSyncAll={() => handleSyncAll(true)}
+            onSyncOne={handleSyncOne}
             onToggleWatch={toggleFileWatch}
             logs={logs}
         />
@@ -451,7 +402,6 @@ ${content}`;
         onSave={(newConfig) => {
             setConfig(newConfig);
             setIsConfigOpen(false);
-            addLog("Configurações salvas localmente.", 'info');
         }}
       />
     </div>
