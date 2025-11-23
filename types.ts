@@ -1,13 +1,14 @@
+
 export interface DocFile {
   id: string;
   name: string;
   mimeType: string;
   modifiedTime: string;
   lastSynced?: string;
-  status: 'pendente' | 'sincronizado' | 'erro' | 'sincronizando';
+  status: 'pendente' | 'sincronizado' | 'erro' | 'sincronizando' | 'ignorado';
   content?: string;
   webViewLink?: string;
-  watched: boolean; // Novo campo: se true, será sincronizado automaticamente
+  watched: boolean; // Se true, entra no ciclo de auto-sync
 }
 
 export interface AppConfig {
@@ -15,7 +16,7 @@ export interface AppConfig {
   difyBaseUrl: string;
   difyDatasetId: string;
   googleClientId: string;
-  googleApiKey?: string; // Campo novo para API Key do Google Cloud
+  googleApiKey?: string;
   autoSync: boolean;
   syncInterval: number;
 }
