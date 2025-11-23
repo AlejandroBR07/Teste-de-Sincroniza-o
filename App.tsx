@@ -89,7 +89,6 @@ const App: React.FC = () => {
   const watchedMapRef = useRef(watchedFilesMap);
   const historyMapRef = useRef(syncHistoryMap);
   const isSyncingRef = useRef(isSyncing);
-  const rawFilesRef = useRef(rawDriveFiles);
 
   // --- EFEITOS DE PERSISTÊNCIA ---
   useEffect(() => {
@@ -108,7 +107,6 @@ const App: React.FC = () => {
   }, [syncHistoryMap]);
 
   useEffect(() => { isSyncingRef.current = isSyncing; }, [isSyncing]);
-  useEffect(() => { rawFilesRef.current = rawDriveFiles; }, [rawDriveFiles]);
 
   const addLog = (message: string, type: 'info' | 'sucesso' | 'erro' = 'info') => {
     setLogs(prev => [{ id: Math.random().toString(36).substr(2, 9), timestamp: new Date(), message, type }, ...prev]);
@@ -118,7 +116,8 @@ const App: React.FC = () => {
   // Esta função pega os arquivos crus do Google e aplica as checkboxes do perfil atual
   const mapFilesToActiveProfile = useCallback(() => {
       const currentProfileId = config.activeProfileId;
-      const rawData = rawFilesRef.current;
+      // FIX: Usar rawDriveFiles diretamente do estado, não de ref, para garantir reatividade
+      const rawData = rawDriveFiles; 
       
       const watchedList = watchedFilesMap[currentProfileId] || [];
       const historyList = syncHistoryMap[currentProfileId] || {};
@@ -137,10 +136,6 @@ const App: React.FC = () => {
                   status = (modTime > (syncTime + 60000)) ? 'pendente' : 'sincronizado';
               }
           }
-          
-          // Mantém visual de sincronizando se o ID bater (independente de perfil, pois a operação é global no momento)
-          // Na verdade, ideal seria saber se este arquivo ESTÁ sendo sincronizado PARA ESTE perfil. 
-          // Por simplificação, assumimos que se está sincronizando na tela, é para o atual.
           
           return {
               id: dFile.id,
@@ -163,12 +158,12 @@ const App: React.FC = () => {
       });
 
       setFiles(mapped);
-  }, [config.activeProfileId, watchedFilesMap, syncHistoryMap]);
+  }, [config.activeProfileId, watchedFilesMap, syncHistoryMap, rawDriveFiles]);
 
   // Sempre que mudar o Perfil, ou os dados crus, ou as checkboxes, remapeia a tela
   useEffect(() => {
       mapFilesToActiveProfile();
-  }, [mapFilesToActiveProfile, rawDriveFiles]);
+  }, [mapFilesToActiveProfile]);
 
   const toggleFileWatch = (fileId: string) => {
       const profileId = config.activeProfileId;
@@ -236,7 +231,10 @@ const App: React.FC = () => {
 
   // --- FETCH DRIVE (Apenas busca dados, não processa visual) ---
   const fetchDriveFiles = async (queryTerm: string = '') => {
-    if (!gapiInited) return;
+    if (!gapiInited) {
+        console.error("GAPI não inicializado ao tentar buscar arquivos.");
+        return;
+    }
 
     try {
         let query = "trashed = false and (mimeType = 'application/vnd.google-apps.document' or mimeType = 'application/pdf' or mimeType = 'text/plain' or mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')";
@@ -246,6 +244,7 @@ const App: React.FC = () => {
             addLog(`Buscando no Drive por: "${queryTerm}"...`, 'info');
         }
 
+        console.log("--- DEBUG: Fetching Files ---");
         const response = await window.gapi.client.drive.files.list({
             'pageSize': 50,
             'fields': 'files(id, name, mimeType, modifiedTime, webViewLink)',
@@ -256,11 +255,15 @@ const App: React.FC = () => {
 
         const dFiles = response.result.files;
         if (dFiles) {
-            setRawDriveFiles(dFiles); // Salva o cru
+            console.log("--- DEBUG: Files received:", dFiles.length);
+            setRawDriveFiles(dFiles); // Salva o cru, disparando o useEffect de mapeamento
             if (queryTerm) addLog(`${dFiles.length} arquivos encontrados.`, 'info');
+        } else {
+            console.log("--- DEBUG: No files received");
         }
     } catch (err: any) {
         console.error("Erro fetch:", err);
+        addLog(`Erro ao buscar arquivos: ${err.message || 'Desconhecido'}`, 'erro');
         if (err.status === 401) setIsConnected(false);
     }
   };
