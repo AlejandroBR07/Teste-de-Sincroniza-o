@@ -17,15 +17,26 @@ declare global {
 
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
 const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
+const STORAGE_KEY_CONFIG = 'docusync_config_v1';
+const STORAGE_KEY_WATCHED = 'docusync_watched_files';
 
 const App: React.FC = () => {
-  const [config, setConfig] = useState<AppConfig>({
-    difyApiKey: DEFAULT_DIFY_API_KEY, 
-    difyDatasetId: DEFAULT_DIFY_DATASET_ID,
-    difyBaseUrl: DEFAULT_DIFY_BASE_URL,
-    googleClientId: '',
-    autoSync: false,
-    syncInterval: 5
+  // 1. Carregar Config do LocalStorage ou usar padrão
+  const [config, setConfig] = useState<AppConfig>(() => {
+      const saved = localStorage.getItem(STORAGE_KEY_CONFIG);
+      return saved ? JSON.parse(saved) : {
+        difyApiKey: DEFAULT_DIFY_API_KEY, 
+        difyDatasetId: DEFAULT_DIFY_DATASET_ID,
+        difyBaseUrl: DEFAULT_DIFY_BASE_URL,
+        googleClientId: '',
+        autoSync: false,
+        syncInterval: 5
+      };
+  });
+
+  const [watchedFileIds, setWatchedFileIds] = useState<string[]>(() => {
+      const saved = localStorage.getItem(STORAGE_KEY_WATCHED);
+      return saved ? JSON.parse(saved) : [];
   });
 
   const [files, setFiles] = useState<DocFile[]>([]);
@@ -36,13 +47,18 @@ const App: React.FC = () => {
   const [tokenClient, setTokenClient] = useState<any>(null);
   const [gapiInited, setGapiInited] = useState(false);
   
-  // Ref para evitar closures antigos nos intervalos
   const configRef = useRef(config);
   
-  // Atualiza a ref sempre que a config mudar
+  // Salvar Config sempre que mudar
   useEffect(() => {
     configRef.current = config;
+    localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(config));
   }, [config]);
+
+  // Salvar Lista de Monitorados sempre que mudar
+  useEffect(() => {
+      localStorage.setItem(STORAGE_KEY_WATCHED, JSON.stringify(watchedFileIds));
+  }, [watchedFileIds]);
 
   // Helper to add logs
   const addLog = (message: string, type: 'info' | 'sucesso' | 'erro' = 'info') => {
@@ -54,22 +70,37 @@ const App: React.FC = () => {
     }, ...prev]);
   };
 
-  // 1. Inicialização Robusta do Google (Polling)
+  // Toggle Watch Status
+  const toggleFileWatch = (fileId: string) => {
+      setWatchedFileIds(prev => {
+          const exists = prev.includes(fileId);
+          let newIds;
+          if (exists) {
+              newIds = prev.filter(id => id !== fileId);
+              addLog(`Arquivo removido do monitoramento automático.`, 'info');
+          } else {
+              newIds = [...prev, fileId];
+              addLog(`Arquivo adicionado ao monitoramento automático.`, 'info');
+          }
+          return newIds;
+      });
+
+      // Atualiza visualmente na lista de arquivos atual
+      setFiles(prev => prev.map(f => f.id === fileId ? { ...f, watched: !f.watched } : f));
+  };
+
+  // Inicialização do Google
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval>;
 
     const checkAndInitGoogle = async () => {
-      // Verifica se os scripts globais já existem
       if (window.gapi && window.google && window.google.accounts) {
-        
-        // Se já inicializou, para o intervalo
         if (gapiInited && tokenClient) {
             clearInterval(intervalId);
             return;
         }
 
         try {
-            // 1. Inicializa GAPI (Drive API)
             if (!gapiInited) {
                 await new Promise<void>((resolve, reject) => {
                     window.gapi.load('client', {
@@ -82,11 +113,8 @@ const App: React.FC = () => {
                     discoveryDocs: [DISCOVERY_DOC],
                 });
                 setGapiInited(true);
-                addLog("Google Drive API pronta.", 'info');
             }
 
-            // 2. Inicializa GIS (Token Client) se tiver Client ID
-            // Usamos configRef aqui para pegar o valor mais atual mesmo dentro do intervalo
             if (!tokenClient && configRef.current.googleClientId) {
                 const client = window.google.accounts.oauth2.initTokenClient({
                     client_id: configRef.current.googleClientId,
@@ -97,43 +125,33 @@ const App: React.FC = () => {
                             return;
                         }
                         setIsConnected(true);
-                        addLog("Conexão autorizada com sucesso!", 'sucesso');
-                        // Chama fetchFiles direto aqui para garantir
+                        addLog("Conexão autorizada! Recuperando arquivos...", 'sucesso');
                         fetchFilesRef.current(); 
                     },
                 });
                 setTokenClient(client);
-                addLog("Sistema de Login Google pronto.", 'info');
-                clearInterval(intervalId); // Tudo pronto, pode parar de checar
+                clearInterval(intervalId);
             }
         } catch (error: any) {
             console.error(error);
-            // Não loga erro no painel visual para não assustar enquanto carrega
         }
       }
     };
 
-    // Tenta rodar a cada 500ms até conseguir carregar os scripts
-    intervalId = setInterval(checkAndInitGoogle, 500);
-
+    intervalId = setInterval(checkAndInitGoogle, 800);
     return () => clearInterval(intervalId);
-  }, [gapiInited, tokenClient, config.googleClientId]); // Re-executa se mudar o ClientID
+  }, [gapiInited, tokenClient, config.googleClientId]);
 
-  // Hack para acessar fetchFiles dentro do callback do google sem problema de dependência cíclica
   const fetchFilesRef = useRef(() => {});
 
   const handleConnectDrive = () => {
     if (!config.googleClientId) {
-      addLog("Erro: 'Client ID' do Google não configurado. Abra as configurações.", 'erro');
+      addLog("Erro: 'Client ID' do Google não configurado.", 'erro');
       setIsConfigOpen(true);
       return;
     }
-    
     if (tokenClient) {
-        // Pede o token
         tokenClient.requestAccessToken({ prompt: 'consent' });
-    } else {
-        addLog("Carregando componentes do Google... aguarde 2 segundos e tente novamente.", 'info');
     }
   };
 
@@ -141,25 +159,32 @@ const App: React.FC = () => {
     if (!gapiInited || !isConnected) return;
 
     try {
-        addLog("Buscando arquivos no Drive...", 'info');
+        addLog("Listando documentos do Drive...", 'info');
+        // Adicionado supportsAllDrives e includeItemsFromAllDrives para ver arquivos compartilhados
         const response = await window.gapi.client.drive.files.list({
-            'pageSize': 20,
+            'pageSize': 30,
             'fields': 'files(id, name, mimeType, modifiedTime, webViewLink)',
-            'q': "(mimeType = 'application/vnd.google-apps.document' or mimeType = 'text/plain') and trashed = false"
+            'q': "(mimeType = 'application/vnd.google-apps.document' or mimeType = 'text/plain') and trashed = false",
+            'supportsAllDrives': true,
+            'includeItemsFromAllDrives': true
         });
 
         const driveFiles = response.result.files;
         
         if (driveFiles && driveFiles.length > 0) {
             setFiles(currentFiles => {
-                const newFileList = driveFiles.map((dFile: any) => {
+                return driveFiles.map((dFile: any) => {
+                    // Mantém estado anterior se existir
                     const existing = currentFiles.find(f => f.id === dFile.id);
+                    const isWatched = watchedFileIds.includes(dFile.id);
+                    
                     let status: DocFile['status'] = 'pendente';
                     
                     if (existing) {
                          if (existing.status === 'sincronizado' && existing.lastSynced) {
                              const modTime = new Date(dFile.modifiedTime).getTime();
                              const syncTime = new Date(existing.lastSynced).getTime();
+                             // Se modificou depois da última sync, volta para pendente
                              if (modTime > syncTime) {
                                  status = 'pendente'; 
                              } else {
@@ -177,26 +202,25 @@ const App: React.FC = () => {
                         modifiedTime: dFile.modifiedTime,
                         webViewLink: dFile.webViewLink,
                         status: status,
-                        lastSynced: existing?.lastSynced
+                        lastSynced: existing?.lastSynced,
+                        watched: isWatched
                     } as DocFile;
                 });
-                return newFileList;
             });
-            addLog(`${driveFiles.length} documentos encontrados.`, 'info');
+            addLog(`${driveFiles.length} arquivos encontrados.`, 'info');
         } else {
-            addLog("Nenhum documento de texto encontrado na raiz.", 'info');
+            addLog("Nenhum arquivo encontrado. Verifique se você tem Google Docs na conta.", 'info');
         }
 
     } catch (err: any) {
-        addLog(`Erro ao listar arquivos: ${err.message || JSON.stringify(err)}`, 'erro');
-        if (err.status === 401) {
+        addLog(`Erro API Drive: ${err.result?.error?.message || err.message}`, 'erro');
+        if (err.status === 401 || err.status === 403) {
             setIsConnected(false);
-            addLog("Sessão expirada. Conecte novamente.", 'erro');
+            addLog("Permissão revogada ou expirada. Reconecte.", 'erro');
         }
     }
-  }, [gapiInited, isConnected]);
+  }, [gapiInited, isConnected, watchedFileIds]); // Adicionado watchedFileIds para atualizar estado inicial
 
-  // Atualiza a ref
   useEffect(() => {
     fetchFilesRef.current = fetchFiles;
   }, [fetchFiles]);
@@ -217,43 +241,49 @@ const App: React.FC = () => {
               return response.body;
           }
       } catch (e: any) {
-          throw new Error(`Falha ao baixar conteúdo: ${e.message}`);
+          throw new Error(`Falha download: ${e.message}`);
       }
   };
 
-  const handleSync = async () => {
-    const pendingFiles = files.filter(f => f.status === 'pendente' || f.status === 'erro');
+  const handleSync = async (forceAll: boolean = false) => {
+    // Se for automático (não forçado), só pega os arquivos 'watched'
+    // Se for manual (botão Sync Global), pega todos os pendentes
     
-    if (pendingFiles.length === 0) {
-        addLog("Todos os arquivos já estão sincronizados.", 'sucesso');
+    let targetFiles: DocFile[] = [];
+
+    if (forceAll) {
+        // Manual: Sincroniza qualquer coisa que esteja pendente ou com erro
+        targetFiles = files.filter(f => f.status === 'pendente' || f.status === 'erro');
+    } else {
+        // Automático: Sincroniza APENAS os monitorados que estão pendentes
+        targetFiles = files.filter(f => f.watched && (f.status === 'pendente' || f.status === 'erro'));
+    }
+    
+    if (targetFiles.length === 0) {
+        if (forceAll) addLog("Nada novo para sincronizar.", 'info');
         return;
     }
 
     setIsSyncing(true);
-    addLog(`Iniciando sincronização de ${pendingFiles.length} arquivos...`, 'info');
+    addLog(`Iniciando sincronização de ${targetFiles.length} arquivos...`, 'info');
 
-    for (const file of pendingFiles) {
+    for (const file of targetFiles) {
         setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'sincronizando' } : f));
         
         try {
-            addLog(`Baixando conteúdo de '${file.name}'...`, 'info');
             const content = await getFileContent(file.id, file.mimeType);
 
             if (!content || content.trim().length === 0) {
-                throw new Error("Conteúdo do arquivo está vazio.");
+                throw new Error("Arquivo vazio.");
             }
 
-            addLog(`Gerando metadados com Gemini para '${file.name}'...`, 'info');
             const summary = await generateDocumentSummary(content);
-            addLog(`Resumo IA: ${summary}`, 'info');
-
-            addLog(`Enviando '${file.name}' para a Knowledge Base do Dify...`, 'info');
             
             const enhancedContent = `---
 Arquivo: ${file.name}
-Fonte: Google Drive
-Resumo Automático: ${summary}
+Fonte: Google Drive Sync
 Data Modificação: ${file.modifiedTime}
+Resumo: ${summary}
 ---
 
 ${content}`;
@@ -261,77 +291,73 @@ ${content}`;
             const result = await syncFileToDify(enhancedContent, file.name, config);
             
             if (result.success) {
-                addLog(`Sucesso: '${file.name}' indexado no Dify.`, 'sucesso');
+                addLog(`[OK] ${file.name}`, 'sucesso');
                 setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'sincronizado', lastSynced: new Date().toISOString() } : f));
             } else {
                 throw new Error(result.message);
             }
 
         } catch (err: any) {
-            addLog(`Falha em '${file.name}': ${err.message}`, 'erro');
+            addLog(`[ERRO] ${file.name}: ${err.message}`, 'erro');
             setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'erro' } : f));
         }
     }
 
     setIsSyncing(false);
-    addLog("Ciclo de sincronização finalizado.", 'info');
   };
 
-  // Auto-Sync Effect
+  // Auto-Sync Loop
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
     if (config.autoSync && isConnected) {
-        addLog(`Auto-sync ativo. Verificando a cada ${config.syncInterval} min.`, 'info');
+        addLog(`Auto-sync ativo (Arquivos monitorados apenas). Ciclo: ${config.syncInterval}min`, 'info');
+        
         interval = setInterval(() => {
             fetchFiles(); 
-            setTimeout(() => handleSync(), 5000); 
+            // Espera a lista atualizar e então tenta sincronizar apenas os monitorados
+            setTimeout(() => handleSync(false), 5000); 
         }, config.syncInterval * 60 * 1000); 
     }
     return () => clearInterval(interval);
-  }, [config.autoSync, config.syncInterval, isConnected, fetchFiles]); // Added dependencies
+  }, [config.autoSync, config.syncInterval, isConnected]);
 
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-30 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
             <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-lg flex items-center justify-center text-white shadow-lg transform transition hover:rotate-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-lg flex items-center justify-center text-white shadow-lg">
                     <i className="fas fa-network-wired"></i>
                 </div>
                 <div>
-                    <h1 className="text-xl font-bold text-gray-800 tracking-tight leading-tight">DocuSync</h1>
-                    <p className="text-[10px] text-gray-500 font-medium uppercase tracking-widest">Drive <i className="fas fa-arrow-right mx-1"></i> Dify</p>
+                    <h1 className="text-xl font-bold text-gray-800">DocuSync</h1>
+                    <p className="text-[10px] text-gray-500 font-bold uppercase">Drive <i className="fas fa-arrow-right mx-1"></i> Dify</p>
                 </div>
             </div>
             
             <button 
                 onClick={() => setIsConfigOpen(true)}
-                className={`p-2 rounded-full transition relative ${!config.difyApiKey || !config.googleClientId ? 'bg-red-50 text-red-500 animate-pulse' : 'text-gray-500 hover:bg-gray-100'}`}
+                className={`p-2 rounded-full transition relative ${!config.difyApiKey || !config.googleClientId ? 'bg-red-50 text-red-500' : 'text-gray-500 hover:bg-gray-100'}`}
                 title="Configurações"
             >
                 <i className="fas fa-cog text-xl"></i>
-                {(!config.difyApiKey || !config.googleClientId) && (
-                    <span className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-white"></span>
-                )}
             </button>
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-6">
         <Dashboard 
             files={files}
             isSyncing={isSyncing}
             isConnected={isConnected}
             onConnectDrive={handleConnectDrive}
-            onSyncAll={handleSync}
+            onSyncAll={() => handleSync(true)} // Botão manual força tudo
+            onToggleWatch={toggleFileWatch}
             logs={logs}
         />
       </main>
 
-      {/* Modals */}
       <ConfigModal 
         isOpen={isConfigOpen}
         onClose={() => setIsConfigOpen(false)}
@@ -339,7 +365,7 @@ ${content}`;
         onSave={(newConfig) => {
             setConfig(newConfig);
             setIsConfigOpen(false);
-            addLog("Configurações salvas.", 'info');
+            addLog("Configurações salvas localmente.", 'info');
         }}
       />
     </div>
