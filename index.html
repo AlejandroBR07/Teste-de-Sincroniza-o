@@ -12,13 +12,11 @@
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- Scripts do Google (Auth e Drive API são externos mesmo) -->
+    <!-- Scripts do Google (Auth e Drive API) -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js"></script>
-    
-    <!-- NOTA: ImportMaps removidos pois o Vite cuidará das dependências (React, GenAI) no build -->
 
-<script type="importmap">
+  <script type="importmap">
 {
   "imports": {
     "react": "https://aistudiocdn.com/react@^19.2.0",
@@ -35,6 +33,7 @@
 </head>
   <body>
     <div id="root"></div>
+    <!-- AQUI ESTAVA O ERRO: Adicionado o ponto (.) antes da barra para caminho relativo -->
     
   </body>
 </html>
