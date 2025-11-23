@@ -69,7 +69,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                      <p className="text-sm text-gray-600">Necessário para ler seus arquivos.</p>
                      <ul className="text-sm list-disc pl-5 space-y-1 text-gray-700">
                          <li>Acesse o <a href="https://console.cloud.google.com/" target="_blank" className="text-blue-600 underline">Google Cloud Console</a>.</li>
-                         <li>Crie um projeto e vá em <strong>APIs & Services > Enable APIs</strong>.</li>
+                         <li>Crie um projeto e vá em <strong>APIs & Services &gt; Enable APIs</strong>.</li>
                          <li>Ative a <strong>"Google Drive API"</strong>.</li>
                          <li>Vá em <strong>Credentials</strong> e crie uma <strong>API Key</strong> (Copie para o campo Google Cloud API Key).</li>
                          <li>Crie um <strong>OAuth 2.0 Client ID</strong> (Web Application).</li>
@@ -83,7 +83,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                      <p className="text-sm text-gray-600">Para onde os arquivos serão enviados.</p>
                      <ul className="text-sm list-disc pl-5 space-y-1 text-gray-700">
                          <li>Acesse seu projeto no Dify.</li>
-                         <li>Vá em <strong>Knowledge > API</strong>.</li>
+                         <li>Vá em <strong>Knowledge &gt; API</strong>.</li>
                          <li>Copie a <strong>API Key</strong> e o <strong>API Base URL</strong>.</li>
                          <li>O <strong>Dataset ID</strong> está na URL do seu conhecimento no navegador (ex: datasets/<u>seu-id-aqui</u>/documents).</li>
                      </ul>
