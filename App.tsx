@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { DocFile, AppConfig, SyncLog, DifyProfile } from './types';
 import { ConfigModal } from './components/ConfigModal';
@@ -34,11 +33,12 @@ const App: React.FC = () => {
           difyBaseUrl: DEFAULT_DIFY_BASE_URL
       };
 
+      let v1Data: any = null;
+
       // Se não existir ou for da versão antiga (sem profiles), migra
       if (!parsed || !parsed.profiles) {
           // Tenta pegar da V1 se existir (usuário que já configurou)
           const oldV1 = localStorage.getItem('docusync_config_v1');
-          let v1Data: any = null;
 
           if (oldV1) {
               try {
@@ -82,13 +82,20 @@ const App: React.FC = () => {
   const [gapiInited, setGapiInited] = useState(false);
   const [initAttempts, setInitAttempts] = useState(0);
   
+  // Refs críticas para garantir que o Timer/Auto-sync veja o estado mais recente
   const configRef = useRef(config);
+  const filesRef = useRef(files);
   
-  // Salva config sempre que mudar
+  // Salva config sempre que mudar e atualiza a Ref
   useEffect(() => {
     configRef.current = config;
     localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(config));
   }, [config]);
+
+  // Atualiza filesRef sempre que files mudar
+  useEffect(() => {
+    filesRef.current = files;
+  }, [files]);
 
   // Reset de tentativas ao mudar chaves Google
   useEffect(() => {
@@ -110,6 +117,7 @@ const App: React.FC = () => {
           const exists = prev.includes(fileId);
           return exists ? prev.filter(id => id !== fileId) : [...prev, fileId];
       });
+      // Delay pequeno para dar tempo do state atualizar antes de um possível refresh
       setTimeout(() => fetchFilesRef.current(), 100);
   };
 
@@ -117,6 +125,9 @@ const App: React.FC = () => {
       setConfig(prev => ({ ...prev, activeProfileId: profileId }));
       const profileName = config.profiles.find(p => p.id === profileId)?.name;
       addLog(`Trocado para o agente: ${profileName}`, 'info');
+      
+      // Quando troca de perfil, a visualização dos arquivos não muda, 
+      // mas o próximo sync vai usar a chave deste novo perfil.
   };
 
   // Google Init Logic
@@ -201,11 +212,13 @@ const App: React.FC = () => {
                     else {
                         const modTime = new Date(dFile.modifiedTime).getTime();
                         const syncTime = new Date(lastSyncTimeStr).getTime();
+                        // Margem de 1 minuto para evitar loops de sync
                         status = (modTime > (syncTime + 60000)) ? 'pendente' : 'sincronizado';
                     }
                 }
-                // Preserva status temporário
-                const existing = files.find(f => f.id === dFile.id);
+                
+                // Preserva status visual se estiver no meio do processo
+                const existing = filesRef.current.find(f => f.id === dFile.id); // Usa Ref para evitar stale
                 if (existing && existing.status === 'sincronizando') status = 'sincronizando';
 
                 return {
@@ -235,12 +248,16 @@ const App: React.FC = () => {
         console.error("Erro fetch:", err);
         if (err.status === 401) setIsConnected(false);
     }
-  }, [gapiInited, watchedFileIds, syncHistory, files]);
+  }, [gapiInited, watchedFileIds, syncHistory]);
 
   useEffect(() => { fetchFilesRef.current = fetchFiles; }, [fetchFiles]);
 
   // Lógica de Sync
   const processSync = async (file: DocFile) => {
+      // IMPORTANTE: Usa configRef.current para garantir que pega o perfil ATIVO no momento da execução,
+      // mesmo que esta função tenha sido chamada por um setInterval antigo.
+      const currentConfig = configRef.current;
+      
       try {
             setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'sincronizando' } : f));
             
@@ -254,12 +271,10 @@ const App: React.FC = () => {
                 content = resp.body;
             }
 
-            // Resumo
+            // Resumo (opcional)
             let summary = "N/A";
-            if (config.geminiApiKey) {
-                 summary = await generateDocumentSummary(content, config.geminiApiKey);
-            } else {
-                 summary = "Gemini Key não configurada.";
+            if (currentConfig.geminiApiKey) {
+                 summary = await generateDocumentSummary(content, currentConfig.geminiApiKey);
             }
             
             const enhancedContent = `---
@@ -269,7 +284,8 @@ Resumo: ${summary}
 ---
 ${content}`;
 
-            const result = await syncFileToDify(enhancedContent, file.name, config);
+            // Passa a config atual (com o perfil correto) para o serviço
+            const result = await syncFileToDify(enhancedContent, file.name, currentConfig);
             
             if (result.success) {
                 const now = new Date().toISOString();
@@ -286,25 +302,49 @@ ${content}`;
   };
 
   const handleSyncAll = async () => {
-    const candidates = files.filter(f => f.watched && (f.status === 'pendente' || f.status === 'erro'));
-    if (candidates.length === 0) return addLog("Tudo atualizado.", 'info');
+    // Usa filesRef para garantir que pegamos o status mais recente dos arquivos
+    const currentFiles = filesRef.current;
+    
+    // Sincroniza apenas quem está sendo monitorado (watched) E está pendente (ou deu erro)
+    const candidates = currentFiles.filter(f => f.watched && (f.status === 'pendente' || f.status === 'erro'));
+    
+    if (candidates.length === 0) {
+        // Se chamado manualmente, avisa. Se for automático, falha silenciosa.
+        return; 
+    }
     
     setIsSyncing(true);
-    for (const file of candidates) await processSync(file);
+    addLog(`Iniciando auto-sync de ${candidates.length} arquivos...`, 'info');
+    
+    // Processa um por um para não sobrecarregar
+    for (const file of candidates) {
+        await processSync(file);
+    }
+    
     setIsSyncing(false);
   };
 
   // Auto-Sync Timer
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
+    
+    // Verifica se a funcionalidade global está ativa
     if (config.autoSync && isConnected) {
+        addLog(`Auto-sync ativo. Verificando a cada ${config.syncInterval} min.`, 'info');
+        
         interval = setInterval(() => {
+            // 1. Atualiza lista do Drive para ver se algo mudou
             fetchFiles();
-            setTimeout(() => handleSyncAll(), 5000);
+            
+            // 2. Aguarda um pouco a lista atualizar e dispara o sync dos pendentes
+            setTimeout(() => {
+                handleSyncAll();
+            }, 5000);
+            
         }, config.syncInterval * 60 * 1000);
     }
     return () => clearInterval(interval);
-  }, [config.autoSync, config.syncInterval, isConnected]);
+  }, [config.autoSync, config.syncInterval, isConnected]); // Dependências do timer
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
