@@ -35,7 +35,14 @@ const App: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [tokenClient, setTokenClient] = useState<any>(null);
   const [gapiInited, setGapiInited] = useState(false);
-  const [gisInited, setGisInited] = useState(false);
+  
+  // Ref para evitar closures antigos nos intervalos
+  const configRef = useRef(config);
+  
+  // Atualiza a ref sempre que a config mudar
+  useEffect(() => {
+    configRef.current = config;
+  }, [config]);
 
   // Helper to add logs
   const addLog = (message: string, type: 'info' | 'sucesso' | 'erro' = 'info') => {
@@ -47,60 +54,73 @@ const App: React.FC = () => {
     }, ...prev]);
   };
 
-  // 1. Initialize Google API Scripts
+  // 1. Inicialização Robusta do Google (Polling)
   useEffect(() => {
-    const initializeGapiClient = async () => {
-      try {
-        await window.gapi.client.init({
-          discoveryDocs: [DISCOVERY_DOC],
-        });
-        setGapiInited(true);
-        addLog("Google API Client inicializado.", 'info');
-      } catch (err: any) {
-        addLog(`Erro ao inicializar GAPI: ${JSON.stringify(err)}`, 'erro');
+    let intervalId: ReturnType<typeof setInterval>;
+
+    const checkAndInitGoogle = async () => {
+      // Verifica se os scripts globais já existem
+      if (window.gapi && window.google && window.google.accounts) {
+        
+        // Se já inicializou, para o intervalo
+        if (gapiInited && tokenClient) {
+            clearInterval(intervalId);
+            return;
+        }
+
+        try {
+            // 1. Inicializa GAPI (Drive API)
+            if (!gapiInited) {
+                await new Promise<void>((resolve, reject) => {
+                    window.gapi.load('client', {
+                        callback: resolve,
+                        onerror: reject
+                    });
+                });
+                
+                await window.gapi.client.init({
+                    discoveryDocs: [DISCOVERY_DOC],
+                });
+                setGapiInited(true);
+                addLog("Google Drive API pronta.", 'info');
+            }
+
+            // 2. Inicializa GIS (Token Client) se tiver Client ID
+            // Usamos configRef aqui para pegar o valor mais atual mesmo dentro do intervalo
+            if (!tokenClient && configRef.current.googleClientId) {
+                const client = window.google.accounts.oauth2.initTokenClient({
+                    client_id: configRef.current.googleClientId,
+                    scope: SCOPES,
+                    callback: async (resp: any) => {
+                        if (resp.error) {
+                            addLog(`Erro na autenticação: ${resp.error}`, 'erro');
+                            return;
+                        }
+                        setIsConnected(true);
+                        addLog("Conexão autorizada com sucesso!", 'sucesso');
+                        // Chama fetchFiles direto aqui para garantir
+                        fetchFilesRef.current(); 
+                    },
+                });
+                setTokenClient(client);
+                addLog("Sistema de Login Google pronto.", 'info');
+                clearInterval(intervalId); // Tudo pronto, pode parar de checar
+            }
+        } catch (error: any) {
+            console.error(error);
+            // Não loga erro no painel visual para não assustar enquanto carrega
+        }
       }
     };
 
-    const loadGapi = () => {
-        if(window.gapi) {
-             window.gapi.load('client', initializeGapiClient);
-        } else {
-             addLog("Script GAPI não encontrado.", 'erro');
-        }
-    }
+    // Tenta rodar a cada 500ms até conseguir carregar os scripts
+    intervalId = setInterval(checkAndInitGoogle, 500);
 
-    if (window.gapi) loadGapi();
-    
-    // Check for GIS
-    if (window.google) {
-        setGisInited(true);
-    }
-  }, []);
+    return () => clearInterval(intervalId);
+  }, [gapiInited, tokenClient, config.googleClientId]); // Re-executa se mudar o ClientID
 
-  // 2. Setup Token Client when config changes
-  useEffect(() => {
-    if (gisInited && config.googleClientId) {
-        try {
-            const client = window.google.accounts.oauth2.initTokenClient({
-                client_id: config.googleClientId,
-                scope: SCOPES,
-                callback: async (resp: any) => {
-                    if (resp.error) {
-                        addLog(`Erro na autenticação: ${resp.error}`, 'erro');
-                        return;
-                    }
-                    setIsConnected(true);
-                    addLog("Conexão com Google Drive estabelecida!", 'sucesso');
-                    fetchFiles();
-                },
-            });
-            setTokenClient(client);
-        } catch (e) {
-            console.error(e);
-        }
-    }
-  }, [gisInited, config.googleClientId]);
-
+  // Hack para acessar fetchFiles dentro do callback do google sem problema de dependência cíclica
+  const fetchFilesRef = useRef(() => {});
 
   const handleConnectDrive = () => {
     if (!config.googleClientId) {
@@ -110,10 +130,10 @@ const App: React.FC = () => {
     }
     
     if (tokenClient) {
-        // Request Access Token
+        // Pede o token
         tokenClient.requestAccessToken({ prompt: 'consent' });
     } else {
-        addLog("Cliente de Token ainda não inicializado. Verifique a internet ou o Client ID.", 'erro');
+        addLog("Carregando componentes do Google... aguarde 2 segundos e tente novamente.", 'info');
     }
   };
 
@@ -122,7 +142,6 @@ const App: React.FC = () => {
 
     try {
         addLog("Buscando arquivos no Drive...", 'info');
-        // Query for Google Docs and Text files, not in trash
         const response = await window.gapi.client.drive.files.list({
             'pageSize': 20,
             'fields': 'files(id, name, mimeType, modifiedTime, webViewLink)',
@@ -133,15 +152,8 @@ const App: React.FC = () => {
         
         if (driveFiles && driveFiles.length > 0) {
             setFiles(currentFiles => {
-                // Merge logic: keep status if ID exists, else add new
                 const newFileList = driveFiles.map((dFile: any) => {
                     const existing = currentFiles.find(f => f.id === dFile.id);
-                    
-                    // Logic to detect change: if modifiedTime on drive > lastSynced on local
-                    // Note: We don't have persistent storage in this demo code, 
-                    // so on refresh it will always look "pending" unless we saved 'lastSynced' somewhere.
-                    // For now, if it exists in state, keep its status, unless modified time changed.
-                    
                     let status: DocFile['status'] = 'pendente';
                     
                     if (existing) {
@@ -149,7 +161,7 @@ const App: React.FC = () => {
                              const modTime = new Date(dFile.modifiedTime).getTime();
                              const syncTime = new Date(existing.lastSynced).getTime();
                              if (modTime > syncTime) {
-                                 status = 'pendente'; // Changed remotely
+                                 status = 'pendente'; 
                              } else {
                                  status = 'sincronizado';
                              }
@@ -184,18 +196,20 @@ const App: React.FC = () => {
     }
   }, [gapiInited, isConnected]);
 
-  // Function to download file content
+  // Atualiza a ref
+  useEffect(() => {
+    fetchFilesRef.current = fetchFiles;
+  }, [fetchFiles]);
+
   const getFileContent = async (fileId: string, mimeType: string): Promise<string> => {
       try {
           if (mimeType === 'application/vnd.google-apps.document') {
-              // Export Google Doc as text/plain
               const response = await window.gapi.client.drive.files.export({
                   fileId: fileId,
                   mimeType: 'text/plain'
               });
               return response.body;
           } else {
-              // Get standard file media
               const response = await window.gapi.client.drive.files.get({
                   fileId: fileId,
                   alt: 'media'
@@ -219,11 +233,9 @@ const App: React.FC = () => {
     addLog(`Iniciando sincronização de ${pendingFiles.length} arquivos...`, 'info');
 
     for (const file of pendingFiles) {
-        // Update status to syncing
         setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'sincronizando' } : f));
         
         try {
-            // 1. Get Content from Real Drive
             addLog(`Baixando conteúdo de '${file.name}'...`, 'info');
             const content = await getFileContent(file.id, file.mimeType);
 
@@ -231,15 +243,12 @@ const App: React.FC = () => {
                 throw new Error("Conteúdo do arquivo está vazio.");
             }
 
-            // 2. Gemini Analysis
             addLog(`Gerando metadados com Gemini para '${file.name}'...`, 'info');
             const summary = await generateDocumentSummary(content);
             addLog(`Resumo IA: ${summary}`, 'info');
 
-            // 3. Send to Dify
             addLog(`Enviando '${file.name}' para a Knowledge Base do Dify...`, 'info');
             
-            // Enrich content
             const enhancedContent = `---
 Arquivo: ${file.name}
 Fonte: Google Drive
@@ -274,13 +283,12 @@ ${content}`;
     if (config.autoSync && isConnected) {
         addLog(`Auto-sync ativo. Verificando a cada ${config.syncInterval} min.`, 'info');
         interval = setInterval(() => {
-            fetchFiles(); // Refresh list first
-            setTimeout(() => handleSync(), 5000); // Then sync (delay to allow list update)
+            fetchFiles(); 
+            setTimeout(() => handleSync(), 5000); 
         }, config.syncInterval * 60 * 1000); 
     }
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.autoSync, config.syncInterval, isConnected]); // Removed fetchFiles/handleSync to avoid loop issues, trusting closure or refs if needed.
+  }, [config.autoSync, config.syncInterval, isConnected, fetchFiles]); // Added dependencies
 
 
   return (
