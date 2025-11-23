@@ -113,10 +113,8 @@ const App: React.FC = () => {
   };
 
   // --- LÓGICA CORE: MAPEAMENTO DE PERFIL ---
-  // Esta função pega os arquivos crus do Google e aplica as checkboxes do perfil atual
   const mapFilesToActiveProfile = useCallback(() => {
       const currentProfileId = config.activeProfileId;
-      // FIX: Usar rawDriveFiles diretamente do estado, não de ref, para garantir reatividade
       const rawData = rawDriveFiles; 
       
       const watchedList = watchedFilesMap[currentProfileId] || [];
@@ -160,7 +158,6 @@ const App: React.FC = () => {
       setFiles(mapped);
   }, [config.activeProfileId, watchedFilesMap, syncHistoryMap, rawDriveFiles]);
 
-  // Sempre que mudar o Perfil, ou os dados crus, ou as checkboxes, remapeia a tela
   useEffect(() => {
       mapFilesToActiveProfile();
   }, [mapFilesToActiveProfile]);
@@ -179,28 +176,40 @@ const App: React.FC = () => {
       const profileName = config.profiles.find(p => p.id === profileId)?.name;
       addLog(`Alternando para Agente: ${profileName}`, 'info');
       setConfig(prev => ({ ...prev, activeProfileId: profileId }));
-      // O useEffect acima cuidará de atualizar a lista visualmente instantaneamente
   };
 
-  // --- GOOGLE INIT ---
+  // --- GOOGLE INIT & FETCH TRIGGERS ---
+
+  // 1. Inicializa GAPI e TokenClient
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval>;
     const checkAndInitGoogle = async () => {
       if (initAttempts > 5) { clearInterval(intervalId); return; }
       if (window.gapi && window.google) {
+        // Se ambos já existem, tenta configurar
         if (gapiInited && tokenClient) { clearInterval(intervalId); return; }
+        
         try {
+            // Configurar GAPI (API Client)
             if (!gapiInited) {
                 setInitAttempts(prev => prev + 1);
                 await new Promise<void>((resolve, reject) => window.gapi.load('client', { callback: resolve, onerror: reject }));
+                
                 if (!configRef.current.googleApiKey) return; 
                 try {
                     await window.gapi.client.init({ apiKey: configRef.current.googleApiKey, discoveryDocs: [DISCOVERY_DOC] });
+                    // SÓ define como true após sucesso completo
                     setGapiInited(true);
                 } catch (e: any) {
-                    if (e?.result?.error?.code === 502) { addLog("Erro 502: Chave Google Cloud inválida.", 'erro'); clearInterval(intervalId); return; }
+                    if (e?.result?.error?.code === 502) { 
+                        addLog("Erro 502: Chave Google Cloud inválida.", 'erro'); 
+                        clearInterval(intervalId); 
+                        return; 
+                    }
                 }
             }
+
+            // Configurar Token Client (Login)
             if (!tokenClient && configRef.current.googleClientId) {
                 const client = window.google.accounts.oauth2.initTokenClient({
                     client_id: configRef.current.googleClientId,
@@ -208,9 +217,11 @@ const App: React.FC = () => {
                     callback: (resp: any) => {
                         if (resp.error) return addLog(`Erro OAuth: ${resp.error}`, 'erro');
                         if (window.gapi.client) window.gapi.client.setToken(resp);
+                        
+                        // Apenas marca como conectado. NÃO chama fetchDriveFiles aqui.
+                        // O useEffect abaixo cuidará disso quando tudo estiver pronto.
                         setIsConnected(true);
                         addLog("Conectado ao Drive.", 'sucesso');
-                        setTimeout(() => fetchDriveFiles(), 500);
                     },
                 });
                 setTokenClient(client);
@@ -223,16 +234,26 @@ const App: React.FC = () => {
     return () => clearInterval(intervalId);
   }, [gapiInited, tokenClient, config.googleClientId, config.googleApiKey, initAttempts]);
 
+  // 2. Dispara busca automática apenas quando TUDO estiver pronto
+  useEffect(() => {
+      if (isConnected && gapiInited) {
+          // Pequeno delay para garantir propagação interna do gapi
+          const t = setTimeout(() => fetchDriveFiles(), 100);
+          return () => clearTimeout(t);
+      }
+  }, [isConnected, gapiInited]);
+
+
   const handleConnectDrive = () => {
     if (!config.googleClientId || !config.googleApiKey) { addLog("Configure as chaves do Google primeiro.", 'erro'); setIsConfigOpen(true); return; }
     if (tokenClient) tokenClient.requestAccessToken({ prompt: 'consent' });
     else setInitAttempts(0);
   };
 
-  // --- FETCH DRIVE (Apenas busca dados, não processa visual) ---
   const fetchDriveFiles = async (queryTerm: string = '') => {
-    if (!gapiInited) {
-        console.error("GAPI não inicializado ao tentar buscar arquivos.");
+    // Guarda de segurança absoluta
+    if (!gapiInited || !window.gapi || !window.gapi.client) {
+        console.warn("Tentativa de buscar arquivos sem GAPI inicializado.");
         return;
     }
 
@@ -256,10 +277,8 @@ const App: React.FC = () => {
         const dFiles = response.result.files;
         if (dFiles) {
             console.log("--- DEBUG: Files received:", dFiles.length);
-            setRawDriveFiles(dFiles); // Salva o cru, disparando o useEffect de mapeamento
+            setRawDriveFiles(dFiles); 
             if (queryTerm) addLog(`${dFiles.length} arquivos encontrados.`, 'info');
-        } else {
-            console.log("--- DEBUG: No files received");
         }
     } catch (err: any) {
         console.error("Erro fetch:", err);
@@ -277,7 +296,6 @@ const App: React.FC = () => {
 
       try {
             if (isCurrentView) {
-                // Atualiza visualmente para 'sincronizando'
                 setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'sincronizando' } : f));
             }
             
@@ -324,7 +342,6 @@ ${content}`;
         } catch (err: any) {
             addLog(`[${profile.name}] Erro ao sincronizar ${file.name}: ${err.message}`, 'erro');
             if (isCurrentView) {
-                // Força atualização visual de erro
                 setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'erro' } : f));
             }
         }
@@ -371,7 +388,6 @@ ${content}`;
                         addLog(`[Auto-Sync] ${profile.name}: ${pendingFiles.length} alterações.`, 'info');
                         setIsSyncing(true);
                         for (const rawFile of pendingFiles) {
-                            // Converte rawFile para DocFile básico para passar pro sync
                             const docFile: DocFile = {
                                 id: rawFile.id,
                                 name: rawFile.name,
