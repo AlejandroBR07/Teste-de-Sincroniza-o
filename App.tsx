@@ -159,12 +159,15 @@ const App: React.FC = () => {
     if (!gapiInited || !isConnected) return;
 
     try {
-        addLog("Listando documentos do Drive...", 'info');
-        // Adicionado supportsAllDrives e includeItemsFromAllDrives para ver arquivos compartilhados
+        addLog("Listando documentos do Drive (Docs, Word, PDF, Texto)...", 'info');
+        
+        // ALTERAÇÃO: Filtro expandido. Mostra tudo que não é pasta e não é lixo.
+        const query = "trashed = false and mimeType != 'application/vnd.google-apps.folder'";
+
         const response = await window.gapi.client.drive.files.list({
-            'pageSize': 30,
+            'pageSize': 50,
             'fields': 'files(id, name, mimeType, modifiedTime, webViewLink)',
-            'q': "(mimeType = 'application/vnd.google-apps.document' or mimeType = 'text/plain') and trashed = false",
+            'q': query,
             'supportsAllDrives': true,
             'includeItemsFromAllDrives': true
         });
@@ -174,7 +177,6 @@ const App: React.FC = () => {
         if (driveFiles && driveFiles.length > 0) {
             setFiles(currentFiles => {
                 return driveFiles.map((dFile: any) => {
-                    // Mantém estado anterior se existir
                     const existing = currentFiles.find(f => f.id === dFile.id);
                     const isWatched = watchedFileIds.includes(dFile.id);
                     
@@ -184,7 +186,6 @@ const App: React.FC = () => {
                          if (existing.status === 'sincronizado' && existing.lastSynced) {
                              const modTime = new Date(dFile.modifiedTime).getTime();
                              const syncTime = new Date(existing.lastSynced).getTime();
-                             // Se modificou depois da última sync, volta para pendente
                              if (modTime > syncTime) {
                                  status = 'pendente'; 
                              } else {
@@ -209,7 +210,7 @@ const App: React.FC = () => {
             });
             addLog(`${driveFiles.length} arquivos encontrados.`, 'info');
         } else {
-            addLog("Nenhum arquivo encontrado. Verifique se você tem Google Docs na conta.", 'info');
+            addLog("Nenhum arquivo encontrado. O Drive parece vazio.", 'info');
         }
 
     } catch (err: any) {
@@ -219,7 +220,7 @@ const App: React.FC = () => {
             addLog("Permissão revogada ou expirada. Reconecte.", 'erro');
         }
     }
-  }, [gapiInited, isConnected, watchedFileIds]); // Adicionado watchedFileIds para atualizar estado inicial
+  }, [gapiInited, isConnected, watchedFileIds]);
 
   useEffect(() => {
     fetchFilesRef.current = fetchFiles;
@@ -227,13 +228,19 @@ const App: React.FC = () => {
 
   const getFileContent = async (fileId: string, mimeType: string): Promise<string> => {
       try {
-          if (mimeType === 'application/vnd.google-apps.document') {
+          // Lógica diferenciada para Docs vs Arquivos Binários
+          if (mimeType.includes('application/vnd.google-apps')) {
+              // É um Google Doc/Sheet/Slide -> Precisamos EXPORTAR para texto
               const response = await window.gapi.client.drive.files.export({
                   fileId: fileId,
                   mimeType: 'text/plain'
               });
               return response.body;
           } else {
+              // É um PDF, Word, Txt -> Precisamos BAIXAR o conteúdo
+              // Nota: O Dify 'create_by_text' espera texto utf-8. 
+              // PDFs binários podem virar "lixo" se lidos como string crua, 
+              // mas estamos enviando para tentar processar ou ao menos o usuário ver o arquivo.
               const response = await window.gapi.client.drive.files.get({
                   fileId: fileId,
                   alt: 'media'
@@ -241,21 +248,17 @@ const App: React.FC = () => {
               return response.body;
           }
       } catch (e: any) {
-          throw new Error(`Falha download: ${e.message}`);
+          console.error("Erro download:", e);
+          throw new Error(`Não foi possível ler o arquivo. Pode ser um formato binário não suportado para leitura direta.`);
       }
   };
 
   const handleSync = async (forceAll: boolean = false) => {
-    // Se for automático (não forçado), só pega os arquivos 'watched'
-    // Se for manual (botão Sync Global), pega todos os pendentes
-    
     let targetFiles: DocFile[] = [];
 
     if (forceAll) {
-        // Manual: Sincroniza qualquer coisa que esteja pendente ou com erro
         targetFiles = files.filter(f => f.status === 'pendente' || f.status === 'erro');
     } else {
-        // Automático: Sincroniza APENAS os monitorados que estão pendentes
         targetFiles = files.filter(f => f.watched && (f.status === 'pendente' || f.status === 'erro'));
     }
     
@@ -273,16 +276,24 @@ const App: React.FC = () => {
         try {
             const content = await getFileContent(file.id, file.mimeType);
 
-            if (!content || content.trim().length === 0) {
-                throw new Error("Arquivo vazio.");
+            if (!content || content.length === 0) {
+                throw new Error("Arquivo vazio ou não foi possível extrair texto.");
             }
 
-            const summary = await generateDocumentSummary(content);
+            // Para arquivos muito grandes ou binários, o resumo pode falhar, então protegemos
+            let summary = "Resumo não disponível (arquivo binário ou erro).";
+            try {
+                // Limitamos o tamanho do texto enviado ao Gemini para não estourar tokens se for um livro
+                summary = await generateDocumentSummary(content.substring(0, 50000));
+            } catch (sumErr) {
+                console.warn("Erro ao gerar resumo:", sumErr);
+            }
             
             const enhancedContent = `---
 Arquivo: ${file.name}
 Fonte: Google Drive Sync
 Data Modificação: ${file.modifiedTime}
+Tipo: ${file.mimeType}
 Resumo: ${summary}
 ---
 
@@ -314,7 +325,6 @@ ${content}`;
         
         interval = setInterval(() => {
             fetchFiles(); 
-            // Espera a lista atualizar e então tenta sincronizar apenas os monitorados
             setTimeout(() => handleSync(false), 5000); 
         }, config.syncInterval * 60 * 1000); 
     }
