@@ -46,6 +46,7 @@ const App: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [tokenClient, setTokenClient] = useState<any>(null);
   const [gapiInited, setGapiInited] = useState(false);
+  const [initAttempts, setInitAttempts] = useState(0);
   
   const configRef = useRef(config);
   
@@ -94,6 +95,12 @@ const App: React.FC = () => {
     let intervalId: ReturnType<typeof setInterval>;
 
     const checkAndInitGoogle = async () => {
+      // Se já tentamos 5 vezes e falhou, para de tentar para não travar o navegador
+      if (initAttempts > 5) {
+          clearInterval(intervalId);
+          return;
+      }
+
       if (window.gapi && window.google && window.google.accounts) {
         if (gapiInited && tokenClient) {
             clearInterval(intervalId);
@@ -102,6 +109,9 @@ const App: React.FC = () => {
 
         try {
             if (!gapiInited) {
+                // Incrementa contador
+                setInitAttempts(prev => prev + 1);
+
                 await new Promise<void>((resolve, reject) => {
                     window.gapi.load('client', {
                         callback: resolve,
@@ -109,14 +119,34 @@ const App: React.FC = () => {
                     });
                 });
                 
-                // INICIALIZAÇÃO CORRIGIDA: Usa API Key se disponível
-                await window.gapi.client.init({
-                    apiKey: configRef.current.googleApiKey, 
-                    discoveryDocs: [DISCOVERY_DOC],
-                });
+                // Validação básica antes de chamar
+                if (!configRef.current.googleApiKey) {
+                    console.warn("Aguardando API Key...");
+                    return; 
+                }
+
+                console.log("--- DEBUG: TENTANDO INICIAR GAPI ---");
                 
-                setGapiInited(true);
-                console.log("--- DEBUG: GAPI INITED ---");
+                try {
+                    await window.gapi.client.init({
+                        apiKey: configRef.current.googleApiKey, 
+                        discoveryDocs: [DISCOVERY_DOC],
+                    });
+                    setGapiInited(true);
+                    console.log("--- DEBUG: GAPI INITED COM SUCESSO ---");
+                } catch (initError: any) {
+                    console.error("--- ERRO API KEY ---", initError);
+                    
+                    // Tratamento específico para o erro 502/Discovery que o usuário relatou
+                    if (initError?.result?.error?.code === 502 || initError?.message?.includes('discovery')) {
+                        addLog("ERRO CRÍTICO: Sua 'Google API Key' é inválida para o Drive.", 'erro');
+                        addLog("Não use a chave do Gemini/AI Studio. Use uma chave do Google Cloud Console com Drive API ativada.", 'erro');
+                        clearInterval(intervalId); // Para de tentar imediatamente
+                        setIsConfigOpen(true); // Abre o modal para ele corrigir
+                        return;
+                    }
+                    throw initError; // Repassa outros erros
+                }
             }
 
             if (!tokenClient && configRef.current.googleClientId) {
@@ -148,18 +178,18 @@ const App: React.FC = () => {
                 clearInterval(intervalId);
             }
         } catch (error: any) {
-            console.error("--- ERRO FATAL GAPI ---", error);
-            // Ignora erro de cookie se o resto funcionar
+            console.error("--- ERRO GERAL ---", error);
             if (!error?.message?.includes('Cross-Origin-Opener-Policy')) {
-                 addLog(`Aviso Google: ${error.message || error}`, 'info');
+                 // Só loga se não for o erro comum de cross-origin
+                 // addLog(`Tentativa de conexão falhou.`, 'info');
             }
         }
       }
     };
 
-    intervalId = setInterval(checkAndInitGoogle, 800);
+    intervalId = setInterval(checkAndInitGoogle, 1000);
     return () => clearInterval(intervalId);
-  }, [gapiInited, tokenClient, config.googleClientId]);
+  }, [gapiInited, tokenClient, config.googleClientId, config.googleApiKey, initAttempts]);
 
   const fetchFilesRef = useRef(() => {});
 
@@ -169,14 +199,25 @@ const App: React.FC = () => {
       setIsConfigOpen(true);
       return;
     }
+
+    if (!config.googleApiKey) {
+        addLog("Erro: 'API Key' do Google não configurada.", 'erro');
+        setIsConfigOpen(true);
+        return;
+    }
     
     if (tokenClient) {
         tokenClient.requestAccessToken({ prompt: 'consent' });
+    } else {
+        addLog("Aguardando inicialização dos scripts do Google...", 'info');
     }
   };
 
   const fetchFiles = useCallback(async () => {
-    if (!gapiInited) return; // Removemos check de isConnected aqui pois o token já está setado
+    if (!gapiInited) {
+        addLog("Erro: API do Drive não inicializada (Verifique sua API Key).", 'erro');
+        return; 
+    }
 
     try {
         addLog("Buscando arquivos no Drive...", 'info');
@@ -234,7 +275,7 @@ const App: React.FC = () => {
             addLog(`${driveFiles.length} arquivos encontrados.`, 'info');
         } else {
             console.warn("--- DEBUG: LISTA VAZIA ---", response);
-            addLog("Nenhum arquivo encontrado. Verifique se há arquivos na raiz do Drive.", 'info');
+            addLog("Nenhum arquivo encontrado ou permissão negada.", 'info');
         }
 
     } catch (err: any) {
