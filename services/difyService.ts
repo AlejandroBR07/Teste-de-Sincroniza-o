@@ -1,23 +1,26 @@
-import { AppConfig } from "../types";
+
+import { AppConfig, DifyProfile } from "../types";
 
 export const syncFileToDify = async (
   fileContent: string,
   fileName: string,
   config: AppConfig
 ): Promise<{ success: boolean; message: string }> => {
-  if (!config.difyApiKey) {
-    return { success: false, message: "API Key do Dify está faltando nas configurações." };
+  
+  // Encontra o perfil ativo
+  const activeProfile = config.profiles.find(p => p.id === config.activeProfileId);
+
+  if (!activeProfile || !activeProfile.difyApiKey) {
+    return { success: false, message: "Perfil de Agente não configurado ou sem API Key." };
   }
 
   try {
-    // Note: This endpoint creates a document from text.
-    // Dify API: POST /datasets/{dataset_id}/document/create_by_text
-    const url = `${config.difyBaseUrl}/datasets/${config.difyDatasetId}/document/create_by_text`;
+    const url = `${activeProfile.difyBaseUrl}/datasets/${activeProfile.difyDatasetId}/document/create_by_text`;
 
     const body = {
       name: fileName,
       text: fileContent,
-      indexing_technique: "high_quality", // or 'economy'
+      indexing_technique: "high_quality",
       process_rule: {
         mode: "automatic"
       }
@@ -26,7 +29,7 @@ export const syncFileToDify = async (
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${config.difyApiKey}`,
+        "Authorization": `Bearer ${activeProfile.difyApiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
@@ -34,21 +37,18 @@ export const syncFileToDify = async (
 
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        
-        // Handling CORS opaque or generic errors
         if (response.status === 0) {
             throw new Error("Erro de CORS ou Rede. Verifique se o Dify permite requisições deste domínio.");
         }
-        
         throw new Error(errorData.message || `Erro HTTP ${response.status}`);
     }
 
-    return { success: true, message: "Documento indexado com sucesso." };
+    return { success: true, message: "Documento indexado com sucesso no perfil: " + activeProfile.name };
   } catch (error: any) {
     console.error("Erro Dify Sync:", error);
     return { 
       success: false, 
-      message: error.message || "Falha ao sincronizar com Dify. Verifique CORS/API Key." 
+      message: error.message || "Falha ao sincronizar com Dify." 
     };
   }
 };
