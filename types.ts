@@ -15,7 +15,7 @@ export interface AppConfig {
   difyBaseUrl: string;
   difyDatasetId: string;
   googleClientId: string;
-  googleApiKey?: string;
+  googleApiKey?: string; // Campo novo para API Key do Google Cloud
   autoSync: boolean;
   syncInterval: number;
 }
