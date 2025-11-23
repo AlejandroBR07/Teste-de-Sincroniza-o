@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { DocFile, AppConfig, SyncLog, DifyProfile } from './types';
 import { ConfigModal } from './components/ConfigModal';
@@ -17,11 +16,11 @@ declare global {
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
 const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
 const STORAGE_KEY_CONFIG = 'docsync_config_v2';
-const STORAGE_KEY_WATCHED_MAP = 'docsync_watched_files_map'; // Nova estrutura: Map<ProfileID, FileID[]>
-const STORAGE_KEY_SYNC_HISTORY_MAP = 'docsync_sync_history_map'; // Nova estrutura: Map<ProfileID, {FileID: Time}>
+const STORAGE_KEY_WATCHED_MAP = 'docsync_watched_files_map';
+const STORAGE_KEY_SYNC_HISTORY_MAP = 'docsync_sync_history_map';
 
 const App: React.FC = () => {
-  // Configuração com Migração Automática
+  // --- CONFIGURAÇÃO E ESTADO ---
   const [config, setConfig] = useState<AppConfig>(() => {
       const saved = localStorage.getItem(STORAGE_KEY_CONFIG);
       const parsed = saved ? JSON.parse(saved) : null;
@@ -35,7 +34,6 @@ const App: React.FC = () => {
       };
 
       if (!parsed || !parsed.profiles) {
-          // Tenta recuperar configuração antiga se existir
           const oldV1 = localStorage.getItem('docusync_config_v1');
           if (oldV1) {
               try {
@@ -57,33 +55,27 @@ const App: React.FC = () => {
       return parsed;
   });
 
-  // Estado dos Arquivos Monitorados por Perfil: Record<ProfileID, FileID[]>
+  // Mapas de persistência
   const [watchedFilesMap, setWatchedFilesMap] = useState<Record<string, string[]>>(() => {
       const saved = localStorage.getItem(STORAGE_KEY_WATCHED_MAP);
       if (saved) return JSON.parse(saved);
-
-      // Migração: se tinha lista antiga plana, atribui ao perfil ativo
       const oldFlat = localStorage.getItem('docusync_watched_files');
-      if (oldFlat && config.activeProfileId) {
-          return { [config.activeProfileId]: JSON.parse(oldFlat) };
-      }
+      if (oldFlat && config.activeProfileId) return { [config.activeProfileId]: JSON.parse(oldFlat) };
       return {};
   });
   
-  // Estado do Histórico de Sync por Perfil: Record<ProfileID, Record<FileID, Timestamp>>
   const [syncHistoryMap, setSyncHistoryMap] = useState<Record<string, Record<string, string>>>(() => {
       const saved = localStorage.getItem(STORAGE_KEY_SYNC_HISTORY_MAP);
       if (saved) return JSON.parse(saved);
-
-      // Migração
       const oldHistory = localStorage.getItem('docusync_sync_history');
-      if (oldHistory && config.activeProfileId) {
-          return { [config.activeProfileId]: JSON.parse(oldHistory) };
-      }
+      if (oldHistory && config.activeProfileId) return { [config.activeProfileId]: JSON.parse(oldHistory) };
       return {};
   });
 
-  const [files, setFiles] = useState<DocFile[]>([]);
+  // Estado separado: Raw (Google) vs Mapped (Visual)
+  const [rawDriveFiles, setRawDriveFiles] = useState<any[]>([]); // Dados crus do Google
+  const [files, setFiles] = useState<DocFile[]>([]); // Dados processados com status do Perfil Atual
+  
   const [logs, setLogs] = useState<SyncLog[]>([]);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -92,14 +84,14 @@ const App: React.FC = () => {
   const [gapiInited, setGapiInited] = useState(false);
   const [initAttempts, setInitAttempts] = useState(0);
   
-  // Refs para o loop de background acessar o estado mais recente
+  // Refs
   const configRef = useRef(config);
   const watchedMapRef = useRef(watchedFilesMap);
   const historyMapRef = useRef(syncHistoryMap);
   const isSyncingRef = useRef(isSyncing);
-  const filesRef = useRef(files);
+  const rawFilesRef = useRef(rawDriveFiles);
 
-  // Atualiza Refs e Persistência
+  // --- EFEITOS DE PERSISTÊNCIA ---
   useEffect(() => {
     configRef.current = config;
     localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(config));
@@ -116,11 +108,67 @@ const App: React.FC = () => {
   }, [syncHistoryMap]);
 
   useEffect(() => { isSyncingRef.current = isSyncing; }, [isSyncing]);
-  useEffect(() => { filesRef.current = files; }, [files]);
+  useEffect(() => { rawFilesRef.current = rawDriveFiles; }, [rawDriveFiles]);
 
   const addLog = (message: string, type: 'info' | 'sucesso' | 'erro' = 'info') => {
     setLogs(prev => [{ id: Math.random().toString(36).substr(2, 9), timestamp: new Date(), message, type }, ...prev]);
   };
+
+  // --- LÓGICA CORE: MAPEAMENTO DE PERFIL ---
+  // Esta função pega os arquivos crus do Google e aplica as checkboxes do perfil atual
+  const mapFilesToActiveProfile = useCallback(() => {
+      const currentProfileId = config.activeProfileId;
+      const rawData = rawFilesRef.current;
+      
+      const watchedList = watchedFilesMap[currentProfileId] || [];
+      const historyList = syncHistoryMap[currentProfileId] || {};
+
+      const mapped = rawData.map(dFile => {
+          const isWatched = watchedList.includes(dFile.id);
+          const lastSyncTimeStr = historyList[dFile.id];
+          
+          let status: DocFile['status'] = 'ignorado';
+          
+          if (isWatched) {
+              if (!lastSyncTimeStr) status = 'pendente';
+              else {
+                  const modTime = new Date(dFile.modifiedTime).getTime();
+                  const syncTime = new Date(lastSyncTimeStr).getTime();
+                  status = (modTime > (syncTime + 60000)) ? 'pendente' : 'sincronizado';
+              }
+          }
+          
+          // Mantém visual de sincronizando se o ID bater (independente de perfil, pois a operação é global no momento)
+          // Na verdade, ideal seria saber se este arquivo ESTÁ sendo sincronizado PARA ESTE perfil. 
+          // Por simplificação, assumimos que se está sincronizando na tela, é para o atual.
+          
+          return {
+              id: dFile.id,
+              name: dFile.name,
+              mimeType: dFile.mimeType,
+              modifiedTime: dFile.modifiedTime,
+              webViewLink: dFile.webViewLink,
+              status,
+              lastSynced: lastSyncTimeStr,
+              watched: isWatched
+          } as DocFile;
+      });
+
+      // Ordenação: Monitorados > Pendentes > Recentes
+      mapped.sort((a, b) => {
+          if (a.watched !== b.watched) return a.watched ? -1 : 1;
+          if (a.status === 'pendente' && b.status !== 'pendente') return -1;
+          if (b.status === 'pendente' && a.status !== 'pendente') return 1;
+          return new Date(b.modifiedTime).getTime() - new Date(a.modifiedTime).getTime();
+      });
+
+      setFiles(mapped);
+  }, [config.activeProfileId, watchedFilesMap, syncHistoryMap]);
+
+  // Sempre que mudar o Perfil, ou os dados crus, ou as checkboxes, remapeia a tela
+  useEffect(() => {
+      mapFilesToActiveProfile();
+  }, [mapFilesToActiveProfile, rawDriveFiles]);
 
   const toggleFileWatch = (fileId: string) => {
       const profileId = config.activeProfileId;
@@ -130,17 +178,16 @@ const App: React.FC = () => {
           const newList = exists ? currentList.filter(id => id !== fileId) : [...currentList, fileId];
           return { ...prev, [profileId]: newList };
       });
-      setTimeout(() => fetchFilesRef.current(), 100);
   };
 
   const handleProfileChange = (profileId: string) => {
-      setConfig(prev => ({ ...prev, activeProfileId: profileId }));
       const profileName = config.profiles.find(p => p.id === profileId)?.name;
-      addLog(`Painel alterado para: ${profileName}`, 'info');
-      // A lista de arquivos vai atualizar automaticamente via useEffect do config.activeProfileId
+      addLog(`Alternando para Agente: ${profileName}`, 'info');
+      setConfig(prev => ({ ...prev, activeProfileId: profileId }));
+      // O useEffect acima cuidará de atualizar a lista visualmente instantaneamente
   };
 
-  // Google Init
+  // --- GOOGLE INIT ---
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval>;
     const checkAndInitGoogle = async () => {
@@ -156,7 +203,7 @@ const App: React.FC = () => {
                     await window.gapi.client.init({ apiKey: configRef.current.googleApiKey, discoveryDocs: [DISCOVERY_DOC] });
                     setGapiInited(true);
                 } catch (e: any) {
-                    if (e?.result?.error?.code === 502) { addLog("Chave Google Cloud Inválida.", 'erro'); clearInterval(intervalId); return; }
+                    if (e?.result?.error?.code === 502) { addLog("Erro 502: Chave Google Cloud inválida.", 'erro'); clearInterval(intervalId); return; }
                 }
             }
             if (!tokenClient && configRef.current.googleClientId) {
@@ -168,7 +215,7 @@ const App: React.FC = () => {
                         if (window.gapi.client) window.gapi.client.setToken(resp);
                         setIsConnected(true);
                         addLog("Conectado ao Drive.", 'sucesso');
-                        setTimeout(() => fetchFilesRef.current(), 500);
+                        setTimeout(() => fetchDriveFiles(), 500);
                     },
                 });
                 setTokenClient(client);
@@ -181,16 +228,14 @@ const App: React.FC = () => {
     return () => clearInterval(intervalId);
   }, [gapiInited, tokenClient, config.googleClientId, config.googleApiKey, initAttempts]);
 
-  const fetchFilesRef = useRef((queryTerm?: string) => {});
-
   const handleConnectDrive = () => {
     if (!config.googleClientId || !config.googleApiKey) { addLog("Configure as chaves do Google primeiro.", 'erro'); setIsConfigOpen(true); return; }
     if (tokenClient) tokenClient.requestAccessToken({ prompt: 'consent' });
     else setInitAttempts(0);
   };
 
-  // BUSCA E RENDERIZAÇÃO NA TELA (Só afeta o Profile Ativo)
-  const fetchFiles = useCallback(async (queryTerm: string = '') => {
+  // --- FETCH DRIVE (Apenas busca dados, não processa visual) ---
+  const fetchDriveFiles = async (queryTerm: string = '') => {
     if (!gapiInited) return;
 
     try {
@@ -209,65 +254,18 @@ const App: React.FC = () => {
             'includeItemsFromAllDrives': true
         });
 
-        const driveFiles = response.result.files;
-        const currentProfileId = config.activeProfileId;
-
-        if (driveFiles) {
-            const mappedFiles = driveFiles.map((dFile: any) => {
-                // Verifica listas específicas do perfil ativo
-                const watchedList = watchedFilesMap[currentProfileId] || [];
-                const historyList = syncHistoryMap[currentProfileId] || {};
-
-                const isWatched = watchedList.includes(dFile.id);
-                const lastSyncTimeStr = historyList[dFile.id];
-                
-                let status: DocFile['status'] = 'ignorado';
-                
-                if (isWatched) {
-                    if (!lastSyncTimeStr) status = 'pendente';
-                    else {
-                        const modTime = new Date(dFile.modifiedTime).getTime();
-                        const syncTime = new Date(lastSyncTimeStr).getTime();
-                        status = (modTime > (syncTime + 60000)) ? 'pendente' : 'sincronizado';
-                    }
-                }
-                
-                // Mantém estado visual de 'enviando' se estiver
-                const existing = filesRef.current.find(f => f.id === dFile.id);
-                if (existing && existing.status === 'sincronizando') status = 'sincronizando';
-
-                return {
-                    id: dFile.id,
-                    name: dFile.name,
-                    mimeType: dFile.mimeType,
-                    modifiedTime: dFile.modifiedTime,
-                    webViewLink: dFile.webViewLink,
-                    status,
-                    lastSynced: lastSyncTimeStr,
-                    watched: isWatched
-                } as DocFile;
-            });
-
-            // Ordenação: Monitorados por este perfil primeiro
-            mappedFiles.sort((a: DocFile, b: DocFile) => {
-                if (a.watched !== b.watched) return a.watched ? -1 : 1;
-                if (a.status === 'pendente' && b.status !== 'pendente') return -1;
-                if (b.status === 'pendente' && a.status !== 'pendente') return 1;
-                return new Date(b.modifiedTime).getTime() - new Date(a.modifiedTime).getTime();
-            });
-
-            setFiles(mappedFiles);
-            if (queryTerm) addLog(`${mappedFiles.length} arquivos encontrados.`, 'info');
+        const dFiles = response.result.files;
+        if (dFiles) {
+            setRawDriveFiles(dFiles); // Salva o cru
+            if (queryTerm) addLog(`${dFiles.length} arquivos encontrados.`, 'info');
         }
     } catch (err: any) {
         console.error("Erro fetch:", err);
         if (err.status === 401) setIsConnected(false);
     }
-  }, [gapiInited, watchedFilesMap, syncHistoryMap, config.activeProfileId]);
+  };
 
-  useEffect(() => { fetchFilesRef.current = fetchFiles; }, [fetchFiles]);
-
-  // Função central de Sync: Aceita perfil explícito para rodar em background
+  // --- SYNC ---
   const processSync = async (file: DocFile, targetProfile?: DifyProfile) => {
       const profile = targetProfile || config.profiles.find(p => p.id === config.activeProfileId);
       if (!profile) return;
@@ -276,6 +274,7 @@ const App: React.FC = () => {
 
       try {
             if (isCurrentView) {
+                // Atualiza visualmente para 'sincronizando'
                 setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'sincronizando' } : f));
             }
             
@@ -307,7 +306,6 @@ ${content}`;
             if (result.success) {
                 const now = new Date().toISOString();
                 
-                // Atualiza histórico específico deste perfil
                 setSyncHistoryMap(prev => ({
                     ...prev,
                     [profile.id]: {
@@ -315,83 +313,76 @@ ${content}`;
                         [file.id]: now
                     }
                 }));
-
-                if (isCurrentView) {
-                    setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'sincronizado', lastSynced: now } : f));
-                }
                 
-                addLog(`[${profile.name}] ${file.name}: Sincronizado com sucesso.`, 'sucesso');
+                addLog(`[${profile.name}] ${file.name}: Sincronizado.`, 'sucesso');
             } else {
                 throw new Error(result.message);
             }
         } catch (err: any) {
             addLog(`[${profile.name}] Erro ao sincronizar ${file.name}: ${err.message}`, 'erro');
             if (isCurrentView) {
+                // Força atualização visual de erro
                 setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'erro' } : f));
             }
         }
   };
 
-  // LOOP GLOBAL DE AUTO-SYNC (CENTRO DE COMANDO)
+  // --- AUTO SYNC LOOP ---
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
     
     if (config.autoSync && isConnected) {
-        addLog(`Auto-sync ativo. Monitorando todos os ${config.profiles.length} agentes.`, 'info');
+        addLog(`Auto-sync iniciado (Intervalo: ${config.syncInterval}m).`, 'info');
         
         interval = setInterval(async () => {
             if (isSyncingRef.current) return;
             
-            // 1. Baixa lista global de arquivos (Snapshot do Drive)
             try {
+                // 1. Snapshot do Drive
                 const query = "trashed = false and (mimeType = 'application/vnd.google-apps.document' or mimeType = 'application/pdf' or mimeType = 'text/plain' or mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')";
                 const response = await window.gapi.client.drive.files.list({
-                    'pageSize': 100, // Pega mais arquivos no background
+                    'pageSize': 100,
                     'fields': 'files(id, name, mimeType, modifiedTime)',
                     'q': query
                 });
-                const driveFiles = response.result.files as DocFile[];
+                const driveFiles = response.result.files as any[]; // Raw files
                 
                 if (!driveFiles) return;
+                setRawDriveFiles(driveFiles); // Atualiza estado global
 
-                // 2. Itera sobre CADA perfil configurado
+                // 2. Itera Perfis
                 for (const profile of configRef.current.profiles) {
                     const watchedIds = watchedMapRef.current[profile.id] || [];
                     const history = historyMapRef.current[profile.id] || {};
                     
                     if (watchedIds.length === 0) continue;
 
-                    // Encontra arquivos que precisam de update para ESTE perfil
                     const pendingFiles = driveFiles.filter(dFile => {
                         if (!watchedIds.includes(dFile.id)) return false;
-                        
                         const lastSync = history[dFile.id];
-                        if (!lastSync) return true; // Nunca sincronizou
-                        
-                        const modTime = new Date(dFile.modifiedTime).getTime();
-                        const syncTime = new Date(lastSync).getTime();
-                        return modTime > (syncTime + 60000); // 1 min buffer
+                        if (!lastSync) return true;
+                        return new Date(dFile.modifiedTime).getTime() > (new Date(lastSync).getTime() + 60000);
                     });
 
                     if (pendingFiles.length > 0) {
-                        addLog(`[Auto-Sync] Detectadas alterações para ${profile.name} (${pendingFiles.length} arquivos).`, 'info');
+                        addLog(`[Auto-Sync] ${profile.name}: ${pendingFiles.length} alterações.`, 'info');
                         setIsSyncing(true);
-                        
-                        // Sincroniza um por um
-                        for (const file of pendingFiles) {
-                            await processSync(file, profile);
+                        for (const rawFile of pendingFiles) {
+                            // Converte rawFile para DocFile básico para passar pro sync
+                            const docFile: DocFile = {
+                                id: rawFile.id,
+                                name: rawFile.name,
+                                mimeType: rawFile.mimeType,
+                                modifiedTime: rawFile.modifiedTime,
+                                watched: true,
+                                status: 'pendente'
+                            };
+                            await processSync(docFile, profile);
                         }
-                        
                         setIsSyncing(false);
                     }
                 }
-                
-                // Se estiver na tela, atualiza a lista visual também
-                fetchFiles();
-                
-            } catch (e) {
-                console.error("Erro no loop de auto-sync", e);
-            }
+            } catch (e) { console.error("Auto-sync loop error", e); }
             
         }, config.syncInterval * 60 * 1000);
     }
@@ -405,7 +396,7 @@ ${content}`;
             <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                 <i className="fas fa-layer-group text-blue-600"></i> DocSync
             </h1>
-            <button onClick={() => setIsConfigOpen(true)} className="p-2 hover:bg-gray-100 rounded-full">
+            <button onClick={() => setIsConfigOpen(true)} className="p-2 hover:bg-gray-100 rounded-full transition">
                 <i className="fas fa-cog text-xl text-gray-600"></i>
             </button>
         </div>
@@ -419,9 +410,7 @@ ${content}`;
             isConnected={isConnected}
             onConnectDrive={handleConnectDrive}
             onSyncAll={() => {
-                // Sync manual aciona apenas para o perfil VISÍVEL
-                const currentFiles = filesRef.current;
-                const candidates = currentFiles.filter(f => f.watched && (f.status === 'pendente' || f.status === 'erro'));
+                const candidates = files.filter(f => f.watched && (f.status === 'pendente' || f.status === 'erro'));
                 if (candidates.length > 0) {
                     setIsSyncing(true);
                     (async () => {
@@ -433,7 +422,7 @@ ${content}`;
             onSyncOne={processSync}
             onToggleWatch={toggleFileWatch}
             onChangeProfile={handleProfileChange}
-            onDeepSearch={(term) => fetchFiles(term)}
+            onDeepSearch={(term) => fetchDriveFiles(term)}
             logs={logs}
         />
       </main>
