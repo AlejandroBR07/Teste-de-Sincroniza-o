@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { AppConfig } from '../types';
-import { DEFAULT_DIFY_DATASET_ID } from '../constants';
+import { DEFAULT_DIFY_DATASET_ID, DEFAULT_DIFY_API_KEY } from '../constants';
 
 interface ConfigModalProps {
   config: AppConfig;
@@ -12,17 +12,19 @@ interface ConfigModalProps {
 
 export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClose, isOpen }) => {
   const [localConfig, setLocalConfig] = useState<AppConfig>(config);
-  const [showHelp, setShowHelp] = useState(true); // Default to open for first time help
-  const [currentUrl, setCurrentUrl] = useState('');
+  const [showHelp, setShowHelp] = useState(true);
+  const [currentOrigin, setCurrentOrigin] = useState('');
 
   useEffect(() => {
-    // Get the current origin for Google Cloud Console configuration
-    setCurrentUrl(window.location.origin);
+    // window.location.origin pega protocolo + dominio + porta (sem barras no final)
+    // Ex: https://meu-site.com ou http://localhost:3000
+    setCurrentOrigin(window.location.origin);
     
-    // Ensure dataset ID has a default if empty
-    if (!localConfig.difyDatasetId) {
-        setLocalConfig(prev => ({ ...prev, difyDatasetId: DEFAULT_DIFY_DATASET_ID }));
-    }
+    setLocalConfig(prev => ({
+        ...prev,
+        difyDatasetId: prev.difyDatasetId || DEFAULT_DIFY_DATASET_ID,
+        difyApiKey: prev.difyApiKey || DEFAULT_DIFY_API_KEY
+    }));
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -36,44 +38,43 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClos
           <h2 className="text-lg font-bold flex items-center gap-2">
             <i className="fas fa-sliders-h"></i> Configurações do Sistema
           </h2>
-          <button onClick={() => setShowHelp(!showHelp)} className="text-sm bg-slate-700 px-3 py-1 rounded hover:bg-slate-600 transition">
+          <button 
+            onClick={() => setShowHelp(prev => !prev)} 
+            className="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded transition uppercase font-semibold tracking-wider border border-slate-600"
+          >
             {showHelp ? "Ocultar Ajuda" : "Mostrar Ajuda"}
           </button>
         </div>
         
         <div className="p-6 space-y-6 overflow-y-auto bg-gray-50">
           
-          {/* Important URL Section */}
-          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded shadow-sm">
-            <h4 className="font-bold text-yellow-800 text-sm mb-2 flex items-center">
-                <i className="fas fa-exclamation-triangle mr-2"></i>
-                Atenção: Configuração Obrigatória do Google Cloud
-            </h4>
-            <p className="text-sm text-yellow-800 mb-2">
-                Para o login funcionar, você deve adicionar exatamente este link abaixo em <strong>"Origens JavaScript autorizadas"</strong> no seu projeto do Google Cloud:
-            </p>
-            <div className="flex items-center gap-2">
-                <code className="flex-1 bg-white border border-yellow-200 p-2 rounded text-sm font-mono break-all text-gray-700 select-all">
-                    {currentUrl}
-                </code>
-                <button 
-                    onClick={() => navigator.clipboard.writeText(currentUrl)}
-                    className="bg-yellow-100 hover:bg-yellow-200 text-yellow-800 px-3 py-2 rounded text-sm font-medium transition"
-                    title="Copiar URL"
-                >
-                    <i className="fas fa-copy"></i>
-                </button>
-            </div>
-          </div>
-
+          {/* Important URL Section - Controlado pelo botão showHelp */}
           {showHelp && (
-            <div className="bg-blue-50 p-4 rounded-lg text-sm text-blue-900 space-y-2 border border-blue-200">
-                <h4 className="font-bold border-b border-blue-200 pb-1 mb-2">Como preencher os campos abaixo:</h4>
-                <ol className="list-decimal pl-4 space-y-2">
-                    <li><strong>Google Client ID:</strong> No <a href="https://console.cloud.google.com/" target="_blank" className="underline font-bold text-blue-700">Google Cloud Console</a>, crie uma credencial OAuth 2.0. Use a URL acima nas origens permitidas.</li>
-                    <li><strong>Dify API Key:</strong> No Dify, vá na sua Base de Conhecimento > API Endpoint > Crie uma chave.</li>
-                    <li><strong>Dataset ID:</strong> Já preenchemos com o ID que você forneceu ({DEFAULT_DIFY_DATASET_ID}), mas você pode alterar se criar outra base.</li>
-                </ol>
+            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded shadow-sm animate-fade-in">
+                <h4 className="font-bold text-yellow-800 text-sm mb-2 flex items-center">
+                    <i className="fas fa-exclamation-triangle mr-2"></i>
+                    Configuração Obrigatória do Google Cloud (Erro 400)
+                </h4>
+                <p className="text-sm text-yellow-800 mb-2">
+                    Para corrigir o erro "Acesso Bloqueado", adicione <strong>exatamente</strong> esta URL em <strong>"Origens JavaScript autorizadas"</strong> no seu projeto do Google Cloud:
+                </p>
+                <div className="flex items-center gap-2 mb-2">
+                    <code className="flex-1 bg-white border border-yellow-200 p-2 rounded text-sm font-mono break-all text-gray-700 select-all">
+                        {currentOrigin}
+                    </code>
+                    <button 
+                        onClick={() => navigator.clipboard.writeText(currentOrigin)}
+                        className="bg-yellow-100 hover:bg-yellow-200 text-yellow-800 px-3 py-2 rounded text-sm font-medium transition whitespace-nowrap"
+                        title="Copiar URL"
+                    >
+                        <i className="fas fa-copy"></i> Copiar
+                    </button>
+                </div>
+                <ul className="text-xs text-yellow-800 list-disc list-inside space-y-1">
+                    <li>Não coloque barra (/) no final da URL no Google Cloud.</li>
+                    <li>Após salvar no Google, pode levar até 5 minutos para funcionar.</li>
+                    <li>Se o erro persistir, limpe o cache do navegador.</li>
+                </ul>
             </div>
           )}
 
@@ -94,6 +95,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClos
                     placeholder="Cole aqui seu Client ID (ex: 1234...apps.googleusercontent.com)"
                     className="w-full p-3 border border-gray-300 bg-gray-50 text-gray-900 rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm shadow-inner"
                     />
+                    <p className="text-xs text-gray-500 mt-1">Crie em: Google Cloud Console {'>'} Credentials {'>'} OAuth 2.0 Client IDs</p>
                 </div>
             </div>
           </div>
@@ -107,27 +109,32 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClos
             <div className="space-y-4">
                 <div>
                     <label className="block text-sm font-bold text-gray-700 mb-1">
-                        Dify API Key (Chave da Base de Conhecimento) <span className="text-red-500">*</span>
+                        Dify API Key <span className="text-red-500">*</span>
                     </label>
-                    <input 
-                    type="password" 
-                    value={localConfig.difyApiKey}
-                    onChange={(e) => setLocalConfig({...localConfig, difyApiKey: e.target.value})}
-                    placeholder="Começa com 'dataset-api-'"
-                    className="w-full p-3 border border-gray-300 bg-gray-50 text-gray-900 rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm shadow-inner"
-                    />
+                    <div className="relative">
+                        <input 
+                        type="password" 
+                        value={localConfig.difyApiKey}
+                        onChange={(e) => setLocalConfig({...localConfig, difyApiKey: e.target.value})}
+                        placeholder="dataset-..."
+                        className="w-full p-3 pl-10 border border-gray-300 bg-gray-50 text-gray-900 rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm shadow-inner"
+                        />
+                        <i className="fas fa-key absolute left-3 top-3.5 text-gray-400"></i>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">Chave que começa com "dataset-".</p>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                        <label className="block text-sm font-bold text-gray-700 mb-1">ID do Dataset</label>
+                        <label className="block text-sm font-bold text-gray-700 mb-1">ID do Dataset (UUID)</label>
                         <input 
                         type="text" 
                         value={localConfig.difyDatasetId}
                         onChange={(e) => setLocalConfig({...localConfig, difyDatasetId: e.target.value})}
+                        placeholder="d38bb..."
                         className="w-full p-3 border border-gray-300 bg-gray-50 text-gray-900 rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm shadow-inner"
                         />
-                        <p className="text-xs text-gray-500 mt-1">ID da base de conhecimento.</p>
+                        <p className="text-xs text-gray-500 mt-1">O ID numérico/UUID da base.</p>
                     </div>
                     <div>
                         <label className="block text-sm font-bold text-gray-700 mb-1">URL Base do Dify</label>

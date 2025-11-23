@@ -1,10 +1,11 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { DocFile, AppConfig, SyncLog } from './types';
 import { ConfigModal } from './components/ConfigModal';
 import { Dashboard } from './components/Dashboard';
 import { generateDocumentSummary } from './services/geminiService';
 import { syncFileToDify } from './services/difyService';
-import { DEFAULT_DIFY_DATASET_ID, DEFAULT_DIFY_BASE_URL } from './constants';
+import { DEFAULT_DIFY_DATASET_ID, DEFAULT_DIFY_BASE_URL, DEFAULT_DIFY_API_KEY } from './constants';
 
 // Types for Google API
 declare global {
@@ -19,7 +20,7 @@ const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/res
 
 const App: React.FC = () => {
   const [config, setConfig] = useState<AppConfig>({
-    difyApiKey: '', 
+    difyApiKey: DEFAULT_DIFY_API_KEY, 
     difyDatasetId: DEFAULT_DIFY_DATASET_ID,
     difyBaseUrl: DEFAULT_DIFY_BASE_URL,
     googleClientId: '',
