@@ -3,24 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- A tag referrer ajuda na autenticação do Google -->
     <meta name="referrer" content="origin" />
     <title>DocuSync - Drive para Dify</title>
-    <!-- Tailwind CSS (Mantido via CDN para simplificar a estilização sem setup complexo de PostCSS neste XML) -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     
-    <!-- Scripts Oficiais do Google (Obrigatórios) -->
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Scripts do Google -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js"></script>
-    
-    <style>
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-      body {
-        font-family: 'Inter', sans-serif;
-        background-color: #f3f4f6;
-      }
-    </style>
   <script type="importmap">
 {
   "imports": {
@@ -36,7 +30,6 @@
 </head>
   <body>
     <div id="root"></div>
-    <!-- Ponto de entrada do Vite -->
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>
