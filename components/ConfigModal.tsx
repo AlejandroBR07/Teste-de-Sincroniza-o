@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { AppConfig } from '../types';
 import { DEFAULT_DIFY_DATASET_ID, DEFAULT_DIFY_API_KEY } from '../constants';
@@ -16,8 +15,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClos
   const [currentOrigin, setCurrentOrigin] = useState('');
 
   useEffect(() => {
-    // window.location.origin pega protocolo + dominio + porta (sem barras no final)
-    // Ex: https://meu-site.com ou http://localhost:3000
+    // Captura a origem limpa (protocolo + domínio)
     setCurrentOrigin(window.location.origin);
     
     setLocalConfig(prev => ({
@@ -39,30 +37,35 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClos
             <i className="fas fa-sliders-h"></i> Configurações do Sistema
           </h2>
           <button 
-            onClick={() => setShowHelp(prev => !prev)} 
-            className="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded transition uppercase font-semibold tracking-wider border border-slate-600"
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              setShowHelp(!showHelp);
+            }} 
+            className="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded transition uppercase font-semibold tracking-wider border border-slate-600 cursor-pointer select-none"
           >
             {showHelp ? "Ocultar Ajuda" : "Mostrar Ajuda"}
           </button>
         </div>
         
-        <div className="p-6 space-y-6 overflow-y-auto bg-gray-50">
+        <div className="p-6 space-y-6 overflow-y-auto bg-gray-50 flex-1">
           
-          {/* Important URL Section - Controlado pelo botão showHelp */}
+          {/* Important URL Section */}
           {showHelp && (
             <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded shadow-sm animate-fade-in">
                 <h4 className="font-bold text-yellow-800 text-sm mb-2 flex items-center">
                     <i className="fas fa-exclamation-triangle mr-2"></i>
-                    Configuração Obrigatória do Google Cloud (Erro 400)
+                    Resolvendo o Erro 400 (Google OAuth)
                 </h4>
-                <p className="text-sm text-yellow-800 mb-2">
-                    Para corrigir o erro "Acesso Bloqueado", adicione <strong>exatamente</strong> esta URL em <strong>"Origens JavaScript autorizadas"</strong> no seu projeto do Google Cloud:
+                <p className="text-sm text-yellow-800 mb-2 leading-relaxed">
+                    O Google bloqueia conexões se a URL não for exata. Se você está hospedando no <strong>GitHub Pages</strong> ou rodando localmente, copie a URL abaixo e adicione nas <strong>"Origens JavaScript autorizadas"</strong> no Google Cloud.
                 </p>
                 <div className="flex items-center gap-2 mb-2">
                     <code className="flex-1 bg-white border border-yellow-200 p-2 rounded text-sm font-mono break-all text-gray-700 select-all">
                         {currentOrigin}
                     </code>
                     <button 
+                        type="button"
                         onClick={() => navigator.clipboard.writeText(currentOrigin)}
                         className="bg-yellow-100 hover:bg-yellow-200 text-yellow-800 px-3 py-2 rounded text-sm font-medium transition whitespace-nowrap"
                         title="Copiar URL"
@@ -70,11 +73,10 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClos
                         <i className="fas fa-copy"></i> Copiar
                     </button>
                 </div>
-                <ul className="text-xs text-yellow-800 list-disc list-inside space-y-1">
-                    <li>Não coloque barra (/) no final da URL no Google Cloud.</li>
-                    <li>Após salvar no Google, pode levar até 5 minutos para funcionar.</li>
-                    <li>Se o erro persistir, limpe o cache do navegador.</li>
-                </ul>
+                <div className="text-xs text-yellow-800 space-y-1 bg-yellow-100 p-2 rounded">
+                    <p><strong>Dica GitHub Pages:</strong> A URL geralmente é <code>https://seu-usuario.github.io</code> (sem o nome do repositório no final).</p>
+                    <p><strong>Atenção:</strong> NUNCA coloque uma barra (<code>/</code>) no final da URL lá no Google.</p>
+                </div>
             </div>
           )}
 
@@ -167,12 +169,14 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClos
 
         <div className="bg-gray-100 p-4 flex justify-end gap-3 border-t border-gray-200">
           <button 
+            type="button"
             onClick={onClose}
             className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium hover:bg-gray-200 rounded transition"
           >
             Cancelar
           </button>
           <button 
+            type="button"
             onClick={() => onSave(localConfig)}
             className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-bold shadow-md transition flex items-center gap-2"
           >
