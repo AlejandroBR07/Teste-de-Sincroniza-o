@@ -88,6 +88,19 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClos
             <div className="space-y-4">
                 <div>
                     <label className="block text-sm font-bold text-gray-700 mb-1">
+                        Google API Key <span className="text-red-500">*</span>
+                    </label>
+                    <input 
+                    type="password" 
+                    value={localConfig.googleApiKey || ''}
+                    onChange={(e) => setLocalConfig({...localConfig, googleApiKey: e.target.value})}
+                    placeholder="AIzaSy..."
+                    className="w-full p-3 border border-gray-300 bg-gray-50 text-gray-900 rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm shadow-inner"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">A mesma chave que você usa para o Gemini costuma funcionar (se a Drive API estiver ativada).</p>
+                </div>
+                <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">
                         Google Client ID (OAuth 2.0) <span className="text-red-500">*</span>
                     </label>
                     <input 
