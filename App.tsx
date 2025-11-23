@@ -111,17 +111,10 @@ const App: React.FC = () => {
                 
                 // INICIALIZAÇÃO CORRIGIDA: Usa API Key se disponível
                 await window.gapi.client.init({
-                    apiKey: configRef.current.googleApiKey, // IMPORTANTE
+                    apiKey: configRef.current.googleApiKey, 
                     discoveryDocs: [DISCOVERY_DOC],
                 });
                 
-                // Força carregamento específico da API do Drive se o Discovery falhar
-                try {
-                   await window.gapi.client.load('drive', 'v3');
-                } catch (e) {
-                   console.warn("Aviso no carregamento explícito do Drive V3", e);
-                }
-
                 setGapiInited(true);
                 console.log("--- DEBUG: GAPI INITED ---");
             }
@@ -135,9 +128,20 @@ const App: React.FC = () => {
                             addLog(`Erro na autenticação: ${resp.error}`, 'erro');
                             return;
                         }
+                        
+                        // CORREÇÃO CRÍTICA: Define o token no cliente GAPI
+                        if (window.gapi.client) {
+                            window.gapi.client.setToken(resp);
+                            console.log("--- DEBUG: TOKEN SET ON GAPI CLIENT ---");
+                        }
+
                         setIsConnected(true);
                         addLog("Conexão autorizada! Recuperando arquivos...", 'sucesso');
-                        fetchFilesRef.current(); 
+                        
+                        // Pequeno delay para garantir propagação do token
+                        setTimeout(() => {
+                            fetchFilesRef.current(); 
+                        }, 500);
                     },
                 });
                 setTokenClient(client);
@@ -145,7 +149,10 @@ const App: React.FC = () => {
             }
         } catch (error: any) {
             console.error("--- ERRO FATAL GAPI ---", error);
-            addLog(`Erro na inicialização do Google: ${error.message || error}`, 'erro');
+            // Ignora erro de cookie se o resto funcionar
+            if (!error?.message?.includes('Cross-Origin-Opener-Policy')) {
+                 addLog(`Aviso Google: ${error.message || error}`, 'info');
+            }
         }
       }
     };
@@ -162,25 +169,21 @@ const App: React.FC = () => {
       setIsConfigOpen(true);
       return;
     }
-    // Verifica se a API Key foi configurada, pois é crucial para listar arquivos em alguns projetos
-    if (!config.googleApiKey) {
-        addLog("Aviso: 'Google API Key' não configurada. A listagem pode falhar.", 'info');
-    }
-
+    
     if (tokenClient) {
         tokenClient.requestAccessToken({ prompt: 'consent' });
     }
   };
 
   const fetchFiles = useCallback(async () => {
-    if (!gapiInited || !isConnected) return;
+    if (!gapiInited) return; // Removemos check de isConnected aqui pois o token já está setado
 
     try {
-        addLog("Listando documentos do Drive (Docs, Word, PDF, Texto)...", 'info');
+        addLog("Buscando arquivos no Drive...", 'info');
         console.log("--- DEBUG: INICIANDO FETCH FILES ---");
         
-        // ALTERAÇÃO: Filtro expandido. Mostra tudo que não é pasta e não é lixo.
-        const query = "trashed = false and mimeType != 'application/vnd.google-apps.folder'";
+        // Query simplificada para garantir resultados
+        const query = "trashed = false";
 
         const response = await window.gapi.client.drive.files.list({
             'pageSize': 50,
@@ -231,18 +234,19 @@ const App: React.FC = () => {
             addLog(`${driveFiles.length} arquivos encontrados.`, 'info');
         } else {
             console.warn("--- DEBUG: LISTA VAZIA ---", response);
-            addLog("Nenhum arquivo encontrado. O Drive parece vazio ou a API Key está inválida.", 'info');
+            addLog("Nenhum arquivo encontrado. Verifique se há arquivos na raiz do Drive.", 'info');
         }
 
     } catch (err: any) {
         console.error("--- DEBUG: ERRO API DRIVE ---", err);
-        addLog(`Erro API Drive: ${err.result?.error?.message || err.message}`, 'erro');
+        addLog(`Erro ao listar arquivos: ${err.result?.error?.message || err.message}`, 'erro');
+        
         if (err.status === 401 || err.status === 403) {
             setIsConnected(false);
-            addLog("Permissão revogada ou expirada. Reconecte.", 'erro');
+            addLog("Sessão expirada. Por favor conecte novamente.", 'erro');
         }
     }
-  }, [gapiInited, isConnected, watchedFileIds]);
+  }, [gapiInited, watchedFileIds]);
 
   useEffect(() => {
     fetchFilesRef.current = fetchFiles;
@@ -250,19 +254,13 @@ const App: React.FC = () => {
 
   const getFileContent = async (fileId: string, mimeType: string): Promise<string> => {
       try {
-          // Lógica diferenciada para Docs vs Arquivos Binários
           if (mimeType.includes('application/vnd.google-apps')) {
-              // É um Google Doc/Sheet/Slide -> Precisamos EXPORTAR para texto
               const response = await window.gapi.client.drive.files.export({
                   fileId: fileId,
                   mimeType: 'text/plain'
               });
               return response.body;
           } else {
-              // É um PDF, Word, Txt -> Precisamos BAIXAR o conteúdo
-              // Nota: O Dify 'create_by_text' espera texto utf-8. 
-              // PDFs binários podem virar "lixo" se lidos como string crua, 
-              // mas estamos enviando para tentar processar ou ao menos o usuário ver o arquivo.
               const response = await window.gapi.client.drive.files.get({
                   fileId: fileId,
                   alt: 'media'
@@ -271,7 +269,7 @@ const App: React.FC = () => {
           }
       } catch (e: any) {
           console.error("Erro download:", e);
-          throw new Error(`Não foi possível ler o arquivo. Pode ser um formato binário não suportado para leitura direta.`);
+          throw new Error(`Erro ao baixar arquivo: ${e.result?.error?.message || e.message}`);
       }
   };
 
@@ -299,23 +297,21 @@ const App: React.FC = () => {
             const content = await getFileContent(file.id, file.mimeType);
 
             if (!content || content.length === 0) {
-                throw new Error("Arquivo vazio ou não foi possível extrair texto.");
+                throw new Error("Conteúdo vazio.");
             }
 
-            // Para arquivos muito grandes ou binários, o resumo pode falhar, então protegemos
-            let summary = "Resumo não disponível (arquivo binário ou erro).";
+            let summary = "N/A";
             try {
-                // Limitamos o tamanho do texto enviado ao Gemini para não estourar tokens se for um livro
-                summary = await generateDocumentSummary(content.substring(0, 50000));
+                // Tenta gerar resumo
+                summary = await generateDocumentSummary(content.substring(0, 30000));
             } catch (sumErr) {
-                console.warn("Erro ao gerar resumo:", sumErr);
+                console.warn("Erro resumo:", sumErr);
             }
             
             const enhancedContent = `---
 Arquivo: ${file.name}
-Fonte: Google Drive Sync
-Data Modificação: ${file.modifiedTime}
-Tipo: ${file.mimeType}
+Fonte: Google Drive
+Data: ${file.modifiedTime}
 Resumo: ${summary}
 ---
 
@@ -343,7 +339,7 @@ ${content}`;
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
     if (config.autoSync && isConnected) {
-        addLog(`Auto-sync ativo (Arquivos monitorados apenas). Ciclo: ${config.syncInterval}min`, 'info');
+        addLog(`Auto-sync ativo. Ciclo: ${config.syncInterval}min`, 'info');
         
         interval = setInterval(() => {
             fetchFiles(); 
