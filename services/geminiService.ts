@@ -1,4 +1,3 @@
-
 import { GoogleGenAI } from "@google/genai";
 
 export const generateDocumentSummary = async (content: string, apiKey: string): Promise<string> => {
@@ -19,8 +18,14 @@ export const generateDocumentSummary = async (content: string, apiKey: string): 
     });
     
     return response.text || "Sem resumo disponível.";
-  } catch (error) {
+  } catch (error: any) {
     console.error("Erro no Gemini Summary:", error);
+    
+    // Tratamento específico para chave vazada/inválida
+    if (error.message && (error.message.includes("leaked") || error.message.includes("403") || error.message.includes("PERMISSION_DENIED"))) {
+        return "ERRO: Chave Gemini bloqueada/inválida. Verifique Configurações.";
+    }
+
     return "Falha na geração do resumo.";
   }
 };
