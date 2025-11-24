@@ -282,8 +282,13 @@ const App: React.FC = () => {
         }
     } catch (err: any) {
         console.error("Erro fetch:", err);
+        // Tratamento de Sessão Expirada
+        if (err.status === 401 || (err.result?.error?.code === 401)) {
+            addLog("Sessão Google expirada. Conecte novamente.", 'erro');
+            setIsConnected(false);
+            return;
+        }
         addLog(`Erro ao buscar arquivos: ${err.message || 'Desconhecido'}`, 'erro');
-        if (err.status === 401) setIsConnected(false);
     }
   };
 
@@ -340,6 +345,13 @@ ${content}`;
                 throw new Error(result.message);
             }
         } catch (err: any) {
+            // Se falhou por 401 no meio do sync
+            if (err.status === 401 || (err.result?.error?.code === 401)) {
+                addLog(`[${profile.name}] Erro Sync: Sessão Expirada.`, 'erro');
+                setIsConnected(false);
+                return;
+            }
+
             addLog(`[${profile.name}] Erro ao sincronizar ${file.name}: ${err.message}`, 'erro');
             if (isCurrentView) {
                 setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'erro' } : f));
@@ -401,7 +413,16 @@ ${content}`;
                         setIsSyncing(false);
                     }
                 }
-            } catch (e) { console.error("Auto-sync loop error", e); }
+            } catch (e: any) { 
+                // Tratamento Crítico de Token Expirado no Loop
+                if (e.status === 401 || (e.result?.error?.code === 401)) {
+                    addLog("[Auto-Sync] Sessão expirada. Parando.", 'erro');
+                    setIsConnected(false);
+                    clearInterval(interval);
+                    return;
+                }
+                console.error("Auto-sync loop error", e); 
+            }
             
         }, config.syncInterval * 60 * 1000);
     }
