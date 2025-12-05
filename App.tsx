@@ -66,10 +66,7 @@ const App: React.FC = () => {
       localStorage.setItem(STORAGE_KEY_WATCHED_MAP, JSON.stringify(watchedFilesMap)); 
   }, [watchedFilesMap]);
   
-  useEffect(() => { 
-      historyMapRef.current = syncHistoryMap;
-  }, [syncHistoryMap]);
-  
+  useEffect(() => { historyMapRef.current = syncHistoryMap; }, [syncHistoryMap]);
   useEffect(() => { isSyncingRef.current = isSyncing; }, [isSyncing]);
 
   const notify = (title: string, message: string, type: Notification['type'] = 'info') => {
@@ -89,17 +86,13 @@ const App: React.FC = () => {
   const loadInitialData = async () => {
     try {
         const url = getBackendUrl();
-        const resConfig = await fetch(`${url}/api/config`, {
-            headers: { "ngrok-skip-browser-warning": "true" }
-        });
-        if (!resConfig.ok) throw new Error("Falha na conexão com Backend");
+        const resConfig = await fetch(`${url}/api/config`, { headers: { "ngrok-skip-browser-warning": "true" } });
+        if (!resConfig.ok) throw new Error("Connection failed");
         const serverConfig = await resConfig.json();
         setConfig(serverConfig);
 
         try {
-            const resHistory = await fetch(`${url}/api/history`, {
-                headers: { "ngrok-skip-browser-warning": "true" }
-            });
+            const resHistory = await fetch(`${url}/api/history`, { headers: { "ngrok-skip-browser-warning": "true" } });
             if (resHistory.ok) {
                 const historyData = await resHistory.json();
                 setSyncHistoryMap(historyData || {});
@@ -108,24 +101,19 @@ const App: React.FC = () => {
 
         setLoadingConfig(false);
     } catch (e: any) {
-        notify("Erro Crítico", `Backend offline: ${e.message}`, "error");
+        notify("Backend Disconnected", "Ensure server.js is running.", "error");
         setLoadingConfig(false);
     }
   };
 
-  useEffect(() => {
-      loadInitialData();
-  }, []);
+  useEffect(() => { loadInitialData(); }, []);
 
   const saveHistoryToServer = async (newHistory: any) => {
       try {
           const url = getBackendUrl();
           await fetch(`${url}/api/history`, {
               method: 'POST',
-              headers: { 
-                  'Content-Type': 'application/json',
-                  "ngrok-skip-browser-warning": "true"
-              },
+              headers: { 'Content-Type': 'application/json', "ngrok-skip-browser-warning": "true" },
               body: JSON.stringify(newHistory)
           });
       } catch (e) { console.error(e); }
@@ -136,20 +124,15 @@ const App: React.FC = () => {
         const url = getBackendUrl();
         const res = await fetch(`${url}/api/config`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-User-Email': userProfile?.email || '', 
-                "ngrok-skip-browser-warning": "true"
-            },
+            headers: { 'Content-Type': 'application/json', 'X-User-Email': userProfile?.email || '', "ngrok-skip-browser-warning": "true" },
             body: JSON.stringify(newConfig)
         });
-
-        if (!res.ok) throw new Error("Erro ao salvar");
+        if (!res.ok) throw new Error("Save failed");
         setConfig(newConfig); 
         setIsConfigOpen(false);
-        notify("Salvo", "Configurações atualizadas.", "success");
+        notify("Saved", "System configuration updated.", "success");
       } catch (e: any) {
-          notify("Erro", e.message, "error");
+          notify("Error", e.message, "error");
       }
   };
 
@@ -163,7 +146,6 @@ const App: React.FC = () => {
       const mapped = rawData.map(dFile => {
           const isWatched = watchedList.includes(dFile.id);
           const lastSyncTimeStr = historyList[dFile.id];
-          
           let status: DocFile['status'] = 'ignorado';
           if (isWatched) {
               if (!lastSyncTimeStr) status = 'pendente';
@@ -173,7 +155,6 @@ const App: React.FC = () => {
                   status = (modTime > (syncTime + 60000)) ? 'pendente' : 'sincronizado';
               }
           }
-          
           return {
               id: dFile.id,
               name: dFile.name,
@@ -208,9 +189,7 @@ const App: React.FC = () => {
       });
   };
 
-  const handleProfileChange = (profileId: string) => {
-      setConfig(prev => ({ ...prev, activeProfileId: profileId }));
-  };
+  const handleProfileChange = (profileId: string) => setConfig(prev => ({ ...prev, activeProfileId: profileId }));
 
   useEffect(() => {
     if (loadingConfig || !config.googleClientId) return;
@@ -259,8 +238,8 @@ const App: React.FC = () => {
   const handleDisconnect = () => {
       setConfirmModal({
           isOpen: true,
-          title: "Desconectar",
-          message: "Sair da conta Google?",
+          title: "Sign Out",
+          message: "Disconnect from Google Drive?",
           isDestructive: true,
           action: () => {
               const token = window.gapi.client.getToken();
@@ -283,7 +262,7 @@ const App: React.FC = () => {
         let query = "trashed = false and (mimeType = 'application/vnd.google-apps.document' or mimeType = 'application/pdf' or mimeType = 'text/plain' or mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')";
         if (queryTerm) {
             query += ` and name contains '${queryTerm.replace(/'/g, "\\'")}'`;
-            notify("Buscando", `Filtrando por "${queryTerm}"...`, "info");
+            notify("Searching", "Filtering files...", "info");
         }
         const response = await window.gapi.client.drive.files.list({
             'pageSize': 60,
@@ -295,12 +274,10 @@ const App: React.FC = () => {
         const dFiles = response.result.files;
         if (dFiles) {
             setRawDriveFiles(dFiles); 
-            if(queryTerm) notify("Pronto", `${dFiles.length} arquivos encontrados.`, "success");
+            if(queryTerm) notify("Done", `${dFiles.length} files found.`, "success");
         }
     } catch (err: any) {
-        if (err.status === 401) {
-            setIsConnected(false);
-        }
+        if (err.status === 401) setIsConnected(false);
     }
   };
 
@@ -346,12 +323,12 @@ ${content}`;
                     saveHistoryToServer(newState);
                     return newState;
                 });
-                if (isCurrentView) notify("Sucesso", `${file.name} sincronizado.`, "success");
+                if (isCurrentView) notify("Success", "File synced successfully.", "success");
             } else {
                 throw new Error(result.message);
             }
         } catch (err: any) {
-            notify("Erro Sync", `${file.name}: ${err.message}`, "error");
+            notify("Sync Failed", err.message, "error");
             if (isCurrentView) setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'erro' } : f));
         }
   };
@@ -359,19 +336,19 @@ ${content}`;
   const handleSyncAll = () => {
       const candidates = files.filter(f => f.watched && (f.status === 'pendente' || f.status === 'erro'));
       if (candidates.length === 0) {
-          notify("Info", "Nada pendente para sincronizar.", "info");
+          notify("No updates", "All watched files are up to date.", "info");
           return;
       }
       setConfirmModal({
           isOpen: true,
-          title: "Sincronizar em Massa",
-          message: `Processar ${candidates.length} arquivos agora?`,
+          title: "Batch Sync",
+          message: `Sync ${candidates.length} pending files?`,
           action: () => {
               setIsSyncing(true);
               (async () => {
                   for (const f of candidates) await processSync(f);
                   setIsSyncing(false);
-                  notify("Concluído", "Processo finalizado.", "success");
+                  notify("Batch Complete", "Synchronization finished.", "success");
               })();
           }
       });
@@ -395,16 +372,14 @@ ${content}`;
                     const watchedIds = watchedMapRef.current[profile.id] || [];
                     const history = historyMapRef.current[profile.id] || {};
                     if (watchedIds.length === 0) continue;
-
                     const pendingFiles = driveFiles.filter(dFile => {
                         if (!watchedIds.includes(dFile.id)) return false;
                         const lastSync = history[dFile.id];
                         if (!lastSync) return true;
                         return new Date(dFile.modifiedTime).getTime() > (new Date(lastSync).getTime() + 60000);
                     });
-
                     if (pendingFiles.length > 0) {
-                        notify("Auto-Sync", `Sincronizando ${pendingFiles.length} arquivos...`, "info");
+                        notify("Auto Sync", `Updating ${pendingFiles.length} files...`, "info");
                         setIsSyncing(true);
                         for (const rawFile of pendingFiles) {
                             await processSync({
@@ -425,40 +400,41 @@ ${content}`;
 
   if (loadingConfig) {
       return (
-          <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="min-h-screen flex items-center justify-center bg-white">
               <div className="flex flex-col items-center">
-                  <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-                  <h2 className="text-sm font-medium text-gray-500">Iniciando TradeSync...</h2>
+                  <div className="w-12 h-12 border-2 border-gray-900 border-t-transparent rounded-full animate-spin mb-4"></div>
+                  <h2 className="text-xs font-bold text-gray-900 tracking-widest uppercase">Initializing System</h2>
               </div>
           </div>
       );
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50 font-sans text-gray-900">
-      {/* HEADER: Clean & Modern */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-30 h-16 flex-shrink-0">
+    <div className="min-h-screen flex flex-col bg-[#F7F9FC] font-sans text-gray-900">
+      {/* HEADER: Enterprise Black */}
+      <header className="bg-black text-white border-b border-gray-800 sticky top-0 z-30 h-14 flex-shrink-0 shadow-md">
         <div className="max-w-7xl mx-auto px-4 md:px-6 h-full flex items-center justify-between">
-            <div className="flex items-center gap-3">
-                <div className="bg-indigo-600 text-white w-8 h-8 rounded-lg flex items-center justify-center shadow-md shadow-indigo-200">
-                    <i className="fas fa-layer-group text-sm"></i>
+            <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2.5">
+                    <div className="w-6 h-6 rounded bg-white flex items-center justify-center">
+                        <i className="fas fa-cube text-black text-xs"></i>
+                    </div>
+                    <span className="text-sm font-bold tracking-tight">TradeStars<span className="text-gray-500 font-normal ml-1">Sync</span></span>
                 </div>
-                <div className="flex flex-col justify-center">
-                    <h1 className="text-sm font-bold text-gray-900 tracking-tight">TradeSync</h1>
-                    <span className="text-[10px] text-gray-500 font-medium">v2.2 Enterprise</span>
-                </div>
+                <div className="h-4 w-px bg-gray-800 hidden sm:block"></div>
+                <div className="hidden sm:block text-[10px] text-gray-400 font-medium tracking-wide uppercase">Dify Integration</div>
             </div>
             
             {isConnected && userProfile && (
                 <div className="flex items-center gap-3">
-                     <span className="text-xs text-gray-500 hidden sm:block">Logado como <strong className="text-gray-900">{userProfile.name}</strong></span>
-                     <img src={userProfile.picture} alt="" className="w-8 h-8 rounded-full border border-gray-200 shadow-sm" />
+                     <span className="text-xs text-gray-400 hidden sm:block font-medium">{userProfile.email}</span>
+                     <img src={userProfile.picture} alt="" className="w-6 h-6 rounded-full border border-gray-700 bg-gray-800" />
                 </div>
             )}
         </div>
       </header>
 
-      <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-6 overflow-hidden flex flex-col">
+      <main className="flex-1 max-w-7xl mx-auto w-full p-6 overflow-hidden flex flex-col">
         <Dashboard 
             files={files}
             config={config}
@@ -483,7 +459,6 @@ ${content}`;
         user={userProfile}
         onSave={handleSaveConfig}
       />
-      
       <ConfirmationModal
         isOpen={confirmModal.isOpen}
         title={confirmModal.title}
@@ -492,7 +467,6 @@ ${content}`;
         onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
         isDestructive={confirmModal.isDestructive}
       />
-
       <ToastContainer notifications={notifications} removeNotification={removeNotification} />
     </div>
   );
