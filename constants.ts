@@ -4,7 +4,7 @@
 // URL do SEU Servidor Backend (Ngrok)
 // Você deve atualizar isso sempre que reiniciar o Ngrok e gerar um novo link.
 // Exemplo: "https://a1b2-c3d4.ngrok-free.app"
-export const BACKEND_URL = "https://SEU-LINK-NGROK-AQUI.ngrok-free.app"; 
+export const BACKEND_URL = "https://josette-zebralike-chas.ngrok-free.dev"; 
 
 // Estas constantes agora servem apenas como fallback ou identificadores
 export const DEFAULT_DIFY_BASE_URL = "https://api.dify.ai/v1";
