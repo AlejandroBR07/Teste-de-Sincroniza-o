@@ -24,7 +24,6 @@ export interface AppConfig {
   // Configurações Globais (Google)
   googleClientId: string;
   googleApiKey: string; // Chave do Cloud Console (Drive)
-  geminiApiKey: string; // Chave do AI Studio (Resumos)
   
   // Gestão de Agentes
   profiles: DifyProfile[];
