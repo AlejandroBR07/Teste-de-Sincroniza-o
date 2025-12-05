@@ -85,21 +85,47 @@ const App: React.FC = () => {
   // --- CARREGAR CONFIG DO SERVIDOR ---
   const loadConfigFromServer = async () => {
     try {
-        const cleanUrl = BACKEND_URL.replace(/\/$/, "");
-        if (cleanUrl.includes("SEU-LINK")) {
-            throw new Error("URL do Backend não configurada em constants.ts");
+        let cleanUrl = BACKEND_URL.replace(/\/$/, "");
+        
+        // Verifica se o usuário configurou a URL
+        if (!cleanUrl || cleanUrl.includes("SEU-LINK")) {
+            // Se estiver rodando localmente (development), tenta usar o backend na porta 3000 como fallback
+            if (window.location.hostname === 'localhost') {
+                cleanUrl = 'http://localhost:3000';
+                console.warn("URL não configurada. Tentando fallback localhost:3000");
+            } else {
+                throw new Error("URL do Backend não configurada em constants.ts");
+            }
         }
         
-        const res = await fetch(`${cleanUrl}/api/config`);
+        // Adiciona header especial para pular aviso do Ngrok Free
+        const res = await fetch(`${cleanUrl}/api/config`, {
+            headers: {
+                "ngrok-skip-browser-warning": "true",
+                "Content-Type": "application/json"
+            }
+        });
+
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.indexOf("application/json") === -1) {
+             const text = await res.text();
+             console.error("Resposta não-JSON recebida:", text.substring(0, 100)); // Loga o começo do HTML para debug
+             throw new Error(`O servidor retornou HTML em vez de JSON. Verifique se a URL (${cleanUrl}) está correta.`);
+        }
+
         if (!res.ok) throw new Error("Falha ao conectar ao servidor backend.");
         
         const serverConfig = await res.json();
         setConfig(serverConfig);
         setLoadingConfig(false);
-        // notify("Conectado", "Configurações carregadas do servidor.", "success");
+        
+        // Se a config veio vazia (primeiro uso), avisa
+        if (!serverConfig.googleClientId) {
+             notify("Primeiro Acesso", "Backend conectado! Configure o sistema no menu de engrenagem.", "info");
+        }
     } catch (e: any) {
         console.error(e);
-        notify("Erro de Conexão", `Não foi possível carregar as configurações do servidor (${BACKEND_URL}). Verifique se o Ngrok está rodando.`, "error");
+        notify("Erro de Conexão", `Falha ao carregar config: ${e.message}`, "error");
         setLoadingConfig(false);
     }
   };
@@ -116,7 +142,8 @@ const App: React.FC = () => {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-User-Email': userProfile?.email || '' // Autenticação simples via Header
+                'X-User-Email': userProfile?.email || '', // Autenticação simples via Header
+                "ngrok-skip-browser-warning": "true"
             },
             body: JSON.stringify(newConfig)
         });
