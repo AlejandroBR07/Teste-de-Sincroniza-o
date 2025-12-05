@@ -16,16 +16,12 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'agents' | 'google' | 'general'>('agents');
 
-  // Adiciona a propriedade difyApiKey na interface do frontend, mesmo que ela venha vazia do server
-  // Precisamos disso para permitir que o admin insira uma nova chave
-  
-  // Verificação de Segurança (UI only, o server valida de verdade)
   const userEmail = user?.email || '';
   const isAdmin = ALLOWED_ADMINS.includes(userEmail);
   const isSetupMode = !config.googleClientId;
 
   useEffect(() => {
-    setLocalConfig(JSON.parse(JSON.stringify(config))); // Deep copy
+    setLocalConfig(JSON.parse(JSON.stringify(config))); 
     if (config.profiles.length > 0 && !editingProfileId) {
         setEditingProfileId(config.profiles[0].id);
     }
@@ -37,10 +33,10 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
   const handleAddProfile = () => {
       const newProfile: DifyProfile & { difyApiKey?: string } = {
           id: Math.random().toString(36).substr(2, 9),
-          name: 'Novo Agente',
+          name: 'Nova Base',
           difyDatasetId: DEFAULT_DIFY_DATASET_ID,
           difyBaseUrl: 'https://api.dify.ai/v1',
-          difyApiKey: '' // O admin terá que preencher
+          difyApiKey: '' 
       };
       setLocalConfig(prev => ({
           ...prev,
@@ -76,18 +72,15 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
 
   if (!isAdmin && !isSetupMode) {
       return (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-[9000] p-4 animate-fade-in">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
-                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <i className="fas fa-lock text-red-500 text-2xl"></i>
-                </div>
-                <h2 className="text-xl font-bold text-gray-800 mb-2">Acesso Restrito</h2>
-                <p className="text-gray-500 mb-6 text-sm">
-                    Apenas administradores podem alterar as configurações do servidor. <br/>
-                    Você está logado como: <span className="font-bold text-gray-700">{userEmail || 'Desconhecido'}</span>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[9000] p-4">
+            <div className="bg-white rounded-md shadow-lg w-full max-w-sm p-6 text-center border border-slate-200">
+                <i className="fas fa-lock text-slate-400 text-3xl mb-4"></i>
+                <h2 className="text-lg font-bold text-slate-800 mb-2">Acesso Restrito</h2>
+                <p className="text-slate-600 mb-6 text-sm">
+                    Apenas administradores podem alterar configurações.
                 </p>
-                <button onClick={onClose} className="px-6 py-2 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-900 transition w-full">
-                    Voltar ao Dashboard
+                <button onClick={onClose} className="px-4 py-2 bg-slate-900 text-white rounded font-medium text-sm hover:bg-slate-800 w-full">
+                    Fechar
                 </button>
             </div>
         </div>
@@ -95,46 +88,39 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
   }
 
   return (
-    <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-[8000] p-4 animate-fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[8000] p-4">
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[85vh]">
         
         {/* Header */}
-        <div className="bg-slate-900 px-6 py-4 flex justify-between items-center text-white shrink-0">
-          <div>
-              <h2 className="text-lg font-bold flex items-center gap-2">
-                <i className="fas fa-server text-emerald-400"></i> Configuração do Servidor
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                  Alterações aqui afetam todos os usuários conectados a este Backend.
-              </p>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white transition w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-800">
+        <div className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center shrink-0">
+          <h2 className="text-lg font-bold text-slate-800">
+             Configurações do Sistema
+          </h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
                 <i className="fas fa-times text-lg"></i>
           </button>
         </div>
 
         <div className="flex flex-1 overflow-hidden">
             {/* Sidebar */}
-            <div className="w-56 bg-slate-50 border-r border-slate-200 flex flex-col p-3 gap-2 shrink-0">
-                <button 
-                    onClick={() => setActiveTab('google')}
-                    className={`p-3 text-left rounded-xl text-sm font-bold transition flex items-center gap-3 ${activeTab === 'google' ? 'bg-white shadow-sm text-emerald-600 ring-1 ring-slate-200' : 'text-slate-600 hover:bg-slate-100'}`}
-                >
-                    <i className="fab fa-google w-5 text-center"></i> 
-                    App Google
-                    {isSetupMode && <span className="w-2 h-2 rounded-full bg-rose-500 ml-auto animate-pulse"></span>}
-                </button>
+            <div className="w-48 bg-slate-50 border-r border-slate-200 flex flex-col p-2 gap-1 shrink-0">
                 <button 
                     onClick={() => setActiveTab('agents')}
-                    className={`p-3 text-left rounded-xl text-sm font-bold transition flex items-center gap-3 ${activeTab === 'agents' ? 'bg-white shadow-sm text-indigo-600 ring-1 ring-slate-200' : 'text-slate-600 hover:bg-slate-100'}`}
+                    className={`px-3 py-2 text-left rounded text-sm font-medium transition flex items-center gap-2 ${activeTab === 'agents' ? 'bg-white text-slate-900 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'}`}
                 >
-                    <i className="fas fa-robot w-5 text-center"></i> Agentes Dify
+                    <i className="fas fa-database w-4 text-center"></i> Bases Dify
+                </button>
+                <button 
+                    onClick={() => setActiveTab('google')}
+                    className={`px-3 py-2 text-left rounded text-sm font-medium transition flex items-center gap-2 ${activeTab === 'google' ? 'bg-white text-slate-900 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'}`}
+                >
+                    <i className="fab fa-google w-4 text-center"></i> Google API
                 </button>
                 <button 
                     onClick={() => setActiveTab('general')}
-                    className={`p-3 text-left rounded-xl text-sm font-bold transition flex items-center gap-3 ${activeTab === 'general' ? 'bg-white shadow-sm text-slate-700 ring-1 ring-slate-200' : 'text-slate-600 hover:bg-slate-100'}`}
+                    className={`px-3 py-2 text-left rounded text-sm font-medium transition flex items-center gap-2 ${activeTab === 'general' ? 'bg-white text-slate-900 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'}`}
                 >
-                    <i className="fas fa-sliders-h w-5 text-center"></i> Geral
+                    <i className="fas fa-sliders-h w-4 text-center"></i> Preferências
                 </button>
             </div>
 
@@ -143,25 +129,25 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
                 
                 {activeTab === 'agents' && (
                     <div className="space-y-6">
-                        <div className="flex justify-between items-center">
+                        <div className="flex justify-between items-center pb-4 border-b border-slate-100">
                             <div>
-                                <h3 className="text-lg font-bold text-slate-800">Gerenciar Agentes</h3>
-                                <p className="text-sm text-slate-500">Configure as chaves que o Servidor usará para falar com o Dify.</p>
+                                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Gerenciamento de Bases</h3>
+                                <p className="text-xs text-slate-500 mt-1">Conecte o sistema aos datasets do Dify.</p>
                             </div>
-                            <button onClick={handleAddProfile} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 transition shadow-md shadow-indigo-200">
-                                <i className="fas fa-plus mr-2"></i> Adicionar
+                            <button onClick={handleAddProfile} className="text-indigo-600 hover:text-indigo-800 text-sm font-bold flex items-center gap-1">
+                                <i className="fas fa-plus-circle"></i> Nova Base
                             </button>
                         </div>
 
-                        <div className="flex gap-2 overflow-x-auto pb-1 border-b border-slate-200">
+                        <div className="flex gap-2 mb-4 overflow-x-auto">
                             {localConfig.profiles.map(profile => (
                                 <button
                                     key={profile.id}
                                     onClick={() => setEditingProfileId(profile.id)}
-                                    className={`px-4 py-2.5 rounded-t-lg text-sm font-medium transition-all ${
+                                    className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${
                                         editingProfileId === profile.id 
-                                        ? 'bg-indigo-50 text-indigo-700 border-b-2 border-indigo-500' 
-                                        : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+                                        ? 'bg-slate-800 text-white border-slate-800' 
+                                        : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
                                     }`}
                                 >
                                     {profile.name}
@@ -170,57 +156,51 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
                         </div>
 
                         {currentProfile && (
-                            <div className="space-y-5 animate-fade-in">
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                                    <div className="md:col-span-2">
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Nome do Agente</label>
-                                        <input 
-                                            type="text" 
-                                            value={currentProfile.name}
-                                            onChange={(e) => updateProfile(currentProfile.id, 'name', e.target.value)}
-                                            className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-medium"
-                                        />
-                                    </div>
-                                    <div className="flex items-end">
-                                        <button 
-                                            onClick={() => handleRemoveProfile(currentProfile.id)}
-                                            disabled={localConfig.profiles.length <= 1}
-                                            className="w-full p-2.5 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition font-bold text-sm disabled:opacity-50"
-                                        >
-                                            <i className="fas fa-trash-alt mr-2"></i> Excluir
-                                        </button>
-                                    </div>
+                            <div className="space-y-4 max-w-lg">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nome de Exibição</label>
+                                    <input 
+                                        type="text" 
+                                        value={currentProfile.name}
+                                        onChange={(e) => updateProfile(currentProfile.id, 'name', e.target.value)}
+                                        className="w-full p-2 border border-slate-300 rounded text-sm focus:border-slate-900 focus:ring-1 focus:ring-slate-900 outline-none"
+                                    />
                                 </div>
                                 
-                                <div className="bg-slate-50 p-5 rounded-xl border border-slate-200">
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Dataset ID (Knowledge ID)</label>
-                                            <input 
-                                                type="text" 
-                                                value={currentProfile.difyDatasetId}
-                                                onChange={(e) => updateProfile(currentProfile.id, 'difyDatasetId', e.target.value)}
-                                                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-sm shadow-sm"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                                                Dify API Key (Segredo)
-                                            </label>
-                                            <input 
-                                                type="text" 
-                                                // @ts-ignore
-                                                value={currentProfile.difyApiKey || ''}
-                                                // @ts-ignore
-                                                onChange={(e) => updateProfile(currentProfile.id, 'difyApiKey', e.target.value)}
-                                                placeholder={currentProfile.difyApiKey === '***HIDDEN***' ? 'Chave salva e segura (***). Digite para alterar.' : 'Cole a chave da API do Dify aqui'}
-                                                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-sm shadow-sm text-slate-600"
-                                            />
-                                            <p className="text-[10px] text-slate-500 mt-1">
-                                                Esta chave será salva apenas no servidor (arquivo json). O frontend nunca terá acesso real a ela.
-                                            </p>
-                                        </div>
-                                    </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Dataset ID (Dify)</label>
+                                    <input 
+                                        type="text" 
+                                        value={currentProfile.difyDatasetId}
+                                        onChange={(e) => updateProfile(currentProfile.id, 'difyDatasetId', e.target.value)}
+                                        className="w-full p-2 border border-slate-300 rounded text-sm font-mono focus:border-slate-900 focus:ring-1 focus:ring-slate-900 outline-none"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">API Key (Dify)</label>
+                                    <input 
+                                        type="text" 
+                                        // @ts-ignore
+                                        value={currentProfile.difyApiKey || ''}
+                                        // @ts-ignore
+                                        onChange={(e) => updateProfile(currentProfile.id, 'difyApiKey', e.target.value)}
+                                        placeholder={currentProfile.difyApiKey === '***HIDDEN***' ? '••••••••••••••••' : 'sk-...'}
+                                        className="w-full p-2 border border-slate-300 rounded text-sm font-mono focus:border-slate-900 focus:ring-1 focus:ring-slate-900 outline-none"
+                                    />
+                                    <p className="text-[10px] text-slate-400 mt-1">
+                                        Armazenada com segurança no servidor.
+                                    </p>
+                                </div>
+
+                                <div className="pt-4 border-t border-slate-100 flex justify-end">
+                                     <button 
+                                        onClick={() => handleRemoveProfile(currentProfile.id)}
+                                        disabled={localConfig.profiles.length <= 1}
+                                        className="text-red-600 hover:text-red-800 text-xs font-bold uppercase disabled:opacity-30"
+                                    >
+                                        Excluir Base
+                                    </button>
                                 </div>
                             </div>
                         )}
@@ -228,63 +208,62 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
                 )}
 
                 {activeTab === 'google' && (
-                    <div className="space-y-6">
-                        <div className="bg-amber-50 border-l-4 border-amber-400 p-4 rounded text-sm text-amber-800">
-                             Estas configurações definem qual App Google (Projeto Cloud) será usado para login de <strong>todos</strong> os usuários deste frontend.
+                    <div className="space-y-6 max-w-lg">
+                        <div className="pb-4 border-b border-slate-100">
+                             <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Integração Google Cloud</h3>
                         </div>
 
                         <div>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Client ID (OAuth 2.0) <span className="text-red-500">*</span></label>
-                                    <input 
-                                        type="text" 
-                                        value={localConfig.googleClientId}
-                                        onChange={(e) => setLocalConfig({...localConfig, googleClientId: e.target.value})}
-                                        className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none font-mono text-sm"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">API Key (Google Cloud) <span className="text-red-500">*</span></label>
-                                    <input 
-                                        type="password" 
-                                        value={localConfig.googleApiKey}
-                                        onChange={(e) => setLocalConfig({...localConfig, googleApiKey: e.target.value})}
-                                        className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none font-mono text-sm"
-                                    />
-                                </div>
-                            </div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Client ID</label>
+                            <input 
+                                type="text" 
+                                value={localConfig.googleClientId}
+                                onChange={(e) => setLocalConfig({...localConfig, googleClientId: e.target.value})}
+                                className="w-full p-2 border border-slate-300 rounded text-sm font-mono focus:border-slate-900 focus:ring-1 focus:ring-slate-900 outline-none"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">API Key (Drive API)</label>
+                            <input 
+                                type="password" 
+                                value={localConfig.googleApiKey}
+                                onChange={(e) => setLocalConfig({...localConfig, googleApiKey: e.target.value})}
+                                className="w-full p-2 border border-slate-300 rounded text-sm font-mono focus:border-slate-900 focus:ring-1 focus:ring-slate-900 outline-none"
+                            />
                         </div>
                     </div>
                 )}
 
                 {activeTab === 'general' && (
                     <div className="space-y-6">
-                        <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
-                            <label className="flex items-center gap-3 cursor-pointer mb-4">
-                                <input 
-                                    type="checkbox"
-                                    checked={localConfig.autoSync}
-                                    onChange={(e) => setLocalConfig({...localConfig, autoSync: e.target.checked})}
-                                    className="h-5 w-5 text-indigo-600 rounded focus:ring-indigo-500"
-                                />
-                                <span className="font-bold text-slate-700">Habilitar Auto-Sync Global</span>
-                            </label>
-                            
-                            {localConfig.autoSync && (
-                                <div className="ml-8">
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Intervalo (minutos)</label>
-                                    <input 
-                                        type="number"
-                                        min="1"
-                                        max="60"
-                                        value={localConfig.syncInterval}
-                                        onChange={(e) => setLocalConfig({...localConfig, syncInterval: parseInt(e.target.value) || 5})}
-                                        className="w-20 p-2 border border-slate-300 rounded-lg text-center font-bold text-slate-700"
-                                    />
-                                </div>
-                            )}
+                        <div className="pb-4 border-b border-slate-100">
+                             <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Automação</h3>
                         </div>
+                        
+                        <div className="flex items-center gap-3">
+                            <input 
+                                type="checkbox"
+                                checked={localConfig.autoSync}
+                                onChange={(e) => setLocalConfig({...localConfig, autoSync: e.target.checked})}
+                                className="h-4 w-4 text-slate-900 rounded border-slate-300 focus:ring-slate-900"
+                                id="autosync"
+                            />
+                            <label htmlFor="autosync" className="text-sm font-medium text-slate-700">Habilitar Sincronização Automática</label>
+                        </div>
+                        
+                        {localConfig.autoSync && (
+                            <div className="pl-7">
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Intervalo (minutos)</label>
+                                <input 
+                                    type="number"
+                                    min="1"
+                                    max="60"
+                                    value={localConfig.syncInterval}
+                                    onChange={(e) => setLocalConfig({...localConfig, syncInterval: parseInt(e.target.value) || 5})}
+                                    className="w-20 p-2 border border-slate-300 rounded text-sm font-bold text-slate-900"
+                                />
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
@@ -292,12 +271,12 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
 
         {/* Footer */}
         <div className="bg-slate-50 p-4 flex justify-end gap-3 border-t border-slate-200 shrink-0">
-          <button onClick={onClose} className="px-5 py-2.5 text-slate-600 hover:bg-slate-200 rounded-lg font-medium transition">Cancelar</button>
+          <button onClick={onClose} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded text-sm font-medium">Cancelar</button>
           <button 
             onClick={() => onSave(localConfig)}
-            className="px-6 py-2.5 bg-slate-900 text-white rounded-lg hover:bg-black font-bold shadow-lg shadow-slate-300 flex items-center gap-2 transform active:scale-95 transition"
+            className="px-4 py-2 bg-slate-900 text-white rounded hover:bg-black font-bold text-sm shadow-md"
           >
-            <i className="fas fa-cloud-upload-alt"></i> Salvar no Servidor
+            Salvar Alterações
           </button>
         </div>
       </div>
