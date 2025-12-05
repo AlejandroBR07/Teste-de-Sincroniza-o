@@ -5,52 +5,51 @@ export const syncFileToDify = async (
   fileContent: string,
   fileName: string,
   config: AppConfig,
-  targetProfile?: DifyProfile // Opcional: Se não passar, usa o ativo da config
+  targetProfile?: DifyProfile
 ): Promise<{ success: boolean; message: string }> => {
   
-  // Se um perfil específico foi passado (uso em background), usa ele. 
-  // Senão, usa o perfil ativo na interface.
   const profileToUse = targetProfile || config.profiles.find(p => p.id === config.activeProfileId);
 
-  if (!profileToUse || !profileToUse.difyApiKey) {
-    return { success: false, message: `Perfil ${profileToUse?.name || 'Desconhecido'} sem API Key configurada.` };
+  if (!profileToUse) {
+    return { success: false, message: `Perfil não encontrado.` };
   }
 
+  // Agora enviamos para o NOSSO backend, não direto para o Dify
+  // O Backend é responsável por injetar a API Key segura
   try {
-    const url = `${profileToUse.difyBaseUrl}/datasets/${profileToUse.difyDatasetId}/document/create_by_text`;
+    // Detecta se estamos rodando em dev (Vite) ou prod (Server.js)
+    // Em produção, a API é relativa à origem.
+    const apiUrl = '/api/dify/sync';
 
-    const body = {
-      name: fileName,
-      text: fileContent,
-      indexing_technique: "high_quality",
-      process_rule: {
-        mode: "automatic"
-      }
-    };
-
-    const response = await fetch(url, {
+    const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${profileToUse.difyApiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        name: fileName,
+        text: fileContent,
+        datasetId: profileToUse.difyDatasetId, // O DatasetID ainda é enviado pelo front, pois define o "destino"
+      }),
     });
 
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        if (response.status === 0) {
-            throw new Error("Erro de CORS ou Rede. Verifique se o Dify permite requisições deste domínio.");
+        
+        // Fallback para Dev Mode: Se a rota /api/dify/sync não existir (ex: rodando só 'vite' sem 'node server.js')
+        if (response.status === 404) {
+             throw new Error("Erro de Conexão: O Backend seguro (server.js) não parece estar rodando. Inicie com 'npm run start'.");
         }
+
         throw new Error(errorData.message || `Erro HTTP ${response.status}`);
     }
 
-    return { success: true, message: "Indexado em: " + profileToUse.name };
+    return { success: true, message: "Sincronizado via Backend Seguro." };
   } catch (error: any) {
-    console.error("Erro Dify Sync:", error);
+    console.error("Erro Sync:", error);
     return { 
       success: false, 
-      message: error.message || "Falha ao sincronizar com Dify." 
+      message: error.message || "Falha na comunicação com o servidor." 
     };
   }
 };
