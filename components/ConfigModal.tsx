@@ -1,21 +1,25 @@
+
 import React, { useState, useEffect } from 'react';
-import { AppConfig, DifyProfile } from '../types';
-import { DEFAULT_DIFY_BASE_URL } from '../constants';
+import { AppConfig, DifyProfile, UserProfile } from '../types';
+import { ALLOWED_ADMINS, DEFAULT_DIFY_BASE_URL } from '../constants';
 
 interface ConfigModalProps {
   config: AppConfig;
+  user: UserProfile | null;
   onSave: (config: AppConfig) => void;
   onClose: () => void;
   isOpen: boolean;
 }
 
-export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClose, isOpen }) => {
+export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, onClose, isOpen }) => {
   const [localConfig, setLocalConfig] = useState<AppConfig>(config);
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'google' | 'agents' | 'general'>('agents');
-  
-  // Estado para controlar qual ajuda está aberta ('none', 'dify', 'google', 'gemini')
+  const [activeTab, setActiveTab] = useState<'agents' | 'google' | 'general'>('agents');
   const [activeHelp, setActiveHelp] = useState<string | null>(null);
+
+  // Verificação de Segurança
+  const userEmail = user?.email || '';
+  const isAdmin = ALLOWED_ADMINS.includes(userEmail);
 
   useEffect(() => {
     setLocalConfig(config);
@@ -41,10 +45,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClos
   };
 
   const handleRemoveProfile = (id: string) => {
-      if (localConfig.profiles.length <= 1) {
-          alert("Você precisa ter pelo menos um perfil.");
-          return;
-      }
+      if (localConfig.profiles.length <= 1) return;
       setLocalConfig(prev => {
           const newProfiles = prev.profiles.filter(p => p.id !== id);
           return {
@@ -53,9 +54,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClos
               activeProfileId: prev.activeProfileId === id ? newProfiles[0].id : prev.activeProfileId
           };
       });
-      if (editingProfileId === id) {
-          setEditingProfileId(null);
-      }
+      if (editingProfileId === id) setEditingProfileId(null);
   };
 
   const updateProfile = (id: string, field: keyof DifyProfile, value: string) => {
@@ -65,73 +64,95 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClos
       }));
   };
 
-  const toggleHelp = (section: string) => {
-      setActiveHelp(activeHelp === section ? null : section);
-  };
-
   const currentProfile = localConfig.profiles.find(p => p.id === editingProfileId) || localConfig.profiles[0];
 
   if (!isOpen) return null;
 
+  // Renderização de Bloqueio se não for Admin
+  if (!isAdmin) {
+      return (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-[9000] p-4 animate-fade-in">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
+                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i className="fas fa-lock text-red-500 text-2xl"></i>
+                </div>
+                <h2 className="text-xl font-bold text-gray-800 mb-2">Acesso Restrito</h2>
+                <p className="text-gray-500 mb-6 text-sm">
+                    As configurações de agentes e API são restritas aos administradores. <br/>
+                    Você está logado como: <span className="font-bold text-gray-700">{userEmail || 'Desconhecido'}</span>
+                </p>
+                <button onClick={onClose} className="px-6 py-2 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-900 transition w-full">
+                    Voltar ao Dashboard
+                </button>
+            </div>
+        </div>
+      );
+  }
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-[8000] p-4 animate-fade-in">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[90vh]">
         
         {/* Header */}
-        <div className="bg-slate-900 p-4 flex justify-between items-center text-white">
-          <h2 className="text-lg font-bold flex items-center gap-2">
-            <i className="fas fa-layer-group"></i> Configurações do DocSync
-          </h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-white transition">
-            <i className="fas fa-times text-xl"></i>
+        <div className="bg-slate-900 px-6 py-4 flex justify-between items-center text-white shrink-0">
+          <div>
+              <h2 className="text-lg font-bold flex items-center gap-2">
+                <i className="fas fa-cogs text-indigo-400"></i> Configurações Avançadas
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">Gestão de Agentes e Chaves de API</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-800">
+            <i className="fas fa-times text-lg"></i>
           </button>
         </div>
 
         <div className="flex flex-1 overflow-hidden">
-            {/* Sidebar Tabs */}
-            <div className="w-48 bg-gray-100 border-r border-gray-200 flex flex-col p-2 gap-2">
+            {/* Sidebar */}
+            <div className="w-56 bg-slate-50 border-r border-slate-200 flex flex-col p-3 gap-2 shrink-0">
                 <button 
                     onClick={() => setActiveTab('agents')}
-                    className={`p-3 text-left rounded-lg text-sm font-medium transition flex items-center gap-2 ${activeTab === 'agents' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:bg-gray-200'}`}
+                    className={`p-3 text-left rounded-xl text-sm font-bold transition flex items-center gap-3 ${activeTab === 'agents' ? 'bg-white shadow-sm text-indigo-600 ring-1 ring-slate-200' : 'text-slate-600 hover:bg-slate-100'}`}
                 >
-                    <i className="fas fa-robot w-5"></i> Agentes IA
+                    <i className="fas fa-robot w-5 text-center"></i> Agentes Dify
                 </button>
                 <button 
                     onClick={() => setActiveTab('google')}
-                    className={`p-3 text-left rounded-lg text-sm font-medium transition flex items-center gap-2 ${activeTab === 'google' ? 'bg-white shadow text-red-600' : 'text-gray-600 hover:bg-gray-200'}`}
+                    className={`p-3 text-left rounded-xl text-sm font-bold transition flex items-center gap-3 ${activeTab === 'google' ? 'bg-white shadow-sm text-emerald-600 ring-1 ring-slate-200' : 'text-slate-600 hover:bg-slate-100'}`}
                 >
-                    <i className="fab fa-google w-5"></i> Conexões
+                    <i className="fab fa-google w-5 text-center"></i> Conexões
                 </button>
                 <button 
                     onClick={() => setActiveTab('general')}
-                    className={`p-3 text-left rounded-lg text-sm font-medium transition flex items-center gap-2 ${activeTab === 'general' ? 'bg-white shadow text-gray-800' : 'text-gray-600 hover:bg-gray-200'}`}
+                    className={`p-3 text-left rounded-xl text-sm font-bold transition flex items-center gap-3 ${activeTab === 'general' ? 'bg-white shadow-sm text-slate-700 ring-1 ring-slate-200' : 'text-slate-600 hover:bg-slate-100'}`}
                 >
-                    <i className="fas fa-sliders-h w-5"></i> Geral
+                    <i className="fas fa-sliders-h w-5 text-center"></i> Preferências
                 </button>
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
+            <div className="flex-1 overflow-y-auto p-8 bg-white">
                 
-                {/* --- ABA AGENTES --- */}
                 {activeTab === 'agents' && (
                     <div className="space-y-6">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg font-bold text-gray-800">Seus Perfis de Agente</h3>
-                            <button onClick={handleAddProfile} className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition">
-                                <i className="fas fa-plus mr-1"></i> Novo
+                        <div className="flex justify-between items-center">
+                            <div>
+                                <h3 className="text-lg font-bold text-slate-800">Perfis de Agente</h3>
+                                <p className="text-sm text-slate-500">Configure para onde os documentos serão enviados.</p>
+                            </div>
+                            <button onClick={handleAddProfile} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 transition shadow-md shadow-indigo-200">
+                                <i className="fas fa-plus mr-2"></i> Novo Agente
                             </button>
                         </div>
 
-                        <div className="flex gap-2 overflow-x-auto pb-2 border-b border-gray-200 mb-4">
+                        <div className="flex gap-2 overflow-x-auto pb-1 border-b border-slate-200">
                             {localConfig.profiles.map(profile => (
                                 <button
                                     key={profile.id}
                                     onClick={() => setEditingProfileId(profile.id)}
-                                    className={`px-4 py-2 rounded-t-lg border-t border-l border-r text-sm whitespace-nowrap ${
+                                    className={`px-4 py-2.5 rounded-t-lg text-sm font-medium transition-all ${
                                         editingProfileId === profile.id 
-                                        ? 'bg-white border-gray-200 font-bold text-blue-600 -mb-px' 
-                                        : 'bg-gray-100 text-gray-500 border-transparent hover:bg-gray-200'
+                                        ? 'bg-indigo-50 text-indigo-700 border-b-2 border-indigo-500' 
+                                        : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
                                     }`}
                                 >
                                     {profile.name}
@@ -140,71 +161,81 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClos
                         </div>
 
                         {currentProfile && (
-                            <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm space-y-4 animate-fade-in">
-                                <div className="flex justify-between">
-                                    <div className="flex-1 mr-4">
-                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nome do Agente</label>
+                            <div className="space-y-5 animate-fade-in">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                                    <div className="md:col-span-2">
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Nome de Identificação</label>
                                         <input 
                                             type="text" 
                                             value={currentProfile.name}
                                             onChange={(e) => updateProfile(currentProfile.id, 'name', e.target.value)}
-                                            className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                                            className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-medium"
                                         />
                                     </div>
-                                    <button 
-                                        onClick={() => handleRemoveProfile(currentProfile.id)}
-                                        className="text-red-500 hover:bg-red-50 px-3 rounded transition self-end h-10"
-                                        title="Excluir este perfil"
-                                    >
-                                        <i className="fas fa-trash"></i>
-                                    </button>
+                                    <div className="flex items-end">
+                                        <button 
+                                            onClick={() => handleRemoveProfile(currentProfile.id)}
+                                            disabled={localConfig.profiles.length <= 1}
+                                            className="w-full p-2.5 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition font-bold text-sm disabled:opacity-50"
+                                        >
+                                            <i className="fas fa-trash-alt mr-2"></i> Excluir Agente
+                                        </button>
+                                    </div>
                                 </div>
                                 
-                                <div className="border-t border-gray-100 my-2 pt-2">
-                                    <div className="flex items-center justify-between mb-1">
-                                        <label className="block text-xs font-bold text-gray-500 uppercase">Credenciais do Dify</label>
-                                        <button onClick={() => toggleHelp('dify')} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
-                                            <i className="fas fa-question-circle"></i> Onde pegar isso?
+                                <div className="bg-slate-50 p-5 rounded-xl border border-slate-200">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h4 className="font-bold text-slate-700 text-sm uppercase">Credenciais Dify (Dataset)</h4>
+                                        <button onClick={() => setActiveHelp(activeHelp === 'dify' ? null : 'dify')} className="text-xs text-indigo-600 font-bold hover:underline">
+                                            <i className="fas fa-question-circle mr-1"></i> Onde encontrar?
                                         </button>
                                     </div>
 
                                     {activeHelp === 'dify' && (
-                                        <div className="bg-blue-50 p-3 rounded text-xs text-blue-800 mb-3 border border-blue-100">
-                                            <strong>Passo a Passo:</strong>
-                                            <ol className="list-decimal pl-4 mt-1 space-y-1">
-                                                <li>Acesse seu projeto no Dify.</li>
-                                                <li>No menu lateral, vá em <strong>Knowledge &gt; API</strong>.</li>
-                                                <li>Lá você encontrará a <strong>API Key</strong> e a <strong>API Base URL</strong>.</li>
-                                                <li>O <strong>Dataset ID</strong> fica na URL do navegador quando você acessa a base de conhecimento (ex: <code>.../datasets/<strong>SEU-ID</strong>/documents</code>).</li>
+                                        <div className="bg-blue-50 p-4 rounded-lg text-xs text-blue-800 mb-4 border border-blue-100 shadow-sm">
+                                            <strong>Como configurar:</strong>
+                                            <ol className="list-decimal pl-4 mt-2 space-y-1">
+                                                <li>No Dify, vá em <strong>Knowledge</strong> e selecione sua base.</li>
+                                                <li>No menu lateral esquerdo, clique em <strong>API</strong>.</li>
+                                                <li>Copie a <strong>API Key</strong> e a <strong>API Base URL</strong>.</li>
+                                                <li>O <strong>Dataset ID</strong> está na URL da página da base (ex: <code>/datasets/<strong>SEU-ID</strong>/documents</code>).</li>
                                             </ol>
                                         </div>
                                     )}
 
-                                    <div className="space-y-3">
+                                    <div className="space-y-4">
                                         <div>
-                                            <input 
-                                                type="password" 
-                                                value={currentProfile.difyApiKey}
-                                                onChange={(e) => updateProfile(currentProfile.id, 'difyApiKey', e.target.value)}
-                                                className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
-                                                placeholder="API Key (dataset-...)"
-                                            />
+                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">API Key</label>
+                                            <div className="relative">
+                                                <i className="fas fa-key absolute left-3 top-3 text-slate-400 text-xs"></i>
+                                                <input 
+                                                    type="password" 
+                                                    value={currentProfile.difyApiKey}
+                                                    onChange={(e) => updateProfile(currentProfile.id, 'difyApiKey', e.target.value)}
+                                                    className="w-full pl-9 p-2.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-sm shadow-sm"
+                                                    placeholder="dataset-..."
+                                                />
+                                            </div>
                                         </div>
                                         <div className="grid grid-cols-2 gap-4">
-                                            <input 
-                                                type="text" 
-                                                value={currentProfile.difyDatasetId}
-                                                onChange={(e) => updateProfile(currentProfile.id, 'difyDatasetId', e.target.value)}
-                                                className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
-                                                placeholder="Dataset ID"
-                                            />
-                                            <input 
-                                                type="text" 
-                                                value={currentProfile.difyBaseUrl}
-                                                onChange={(e) => updateProfile(currentProfile.id, 'difyBaseUrl', e.target.value)}
-                                                className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                                                placeholder="Base URL"
-                                            />
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Dataset ID</label>
+                                                <input 
+                                                    type="text" 
+                                                    value={currentProfile.difyDatasetId}
+                                                    onChange={(e) => updateProfile(currentProfile.id, 'difyDatasetId', e.target.value)}
+                                                    className="w-full p-2.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-sm shadow-sm"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Base URL</label>
+                                                <input 
+                                                    type="text" 
+                                                    value={currentProfile.difyBaseUrl}
+                                                    onChange={(e) => updateProfile(currentProfile.id, 'difyBaseUrl', e.target.value)}
+                                                    className="w-full p-2.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm shadow-sm"
+                                                />
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -213,134 +244,109 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, onSave, onClos
                     </div>
                 )}
 
-                {/* --- ABA CONEXÕES --- */}
                 {activeTab === 'google' && (
                     <div className="space-y-6">
-                         <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded text-sm text-yellow-800">
-                             <strong>Atenção:</strong> Estas configurações são globais e usadas por todos os agentes.
-                         </div>
+                        <div className="bg-amber-50 border-l-4 border-amber-400 p-4 rounded text-sm text-amber-800">
+                             <strong>Atenção:</strong> Estas chaves conectam o sistema ao Google Cloud e ao Gemini. Alterações podem quebrar o acesso para todos.
+                        </div>
 
                         <div>
-                            <div className="flex items-center justify-between mb-2 border-b pb-1">
-                                <h4 className="font-bold text-gray-700">Google Drive (Acesso a Arquivos)</h4>
-                                <button onClick={() => toggleHelp('google')} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
-                                    <i className="fas fa-question-circle"></i> Como configurar?
-                                </button>
-                            </div>
-                            
-                            {activeHelp === 'google' && (
-                                <div className="bg-blue-50 p-3 rounded text-xs text-blue-800 mb-3 border border-blue-100">
-                                    <ol className="list-decimal pl-4 mt-1 space-y-1">
-                                        <li>Vá no <a href="https://console.cloud.google.com/" target="_blank" className="underline font-bold">Google Cloud Console</a>.</li>
-                                        <li>Crie um projeto e ative a <strong>"Google Drive API"</strong> em "Enabled APIs".</li>
-                                        <li>Em <strong>Credentials</strong>, crie uma <strong>API Key</strong>. Cole abaixo.</li>
-                                        <li>Crie um <strong>OAuth Client ID</strong> (Web App).</li>
-                                        <li>Em "Authorized JavaScript origins", adicione EXATAMENTE: <code className="bg-white px-1 border rounded">{window.location.origin}</code></li>
-                                        <li>Cole o Client ID abaixo.</li>
-                                    </ol>
-                                </div>
-                            )}
-
-                            <div className="space-y-3">
+                            <h4 className="font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100">Google Drive API (OAuth & Access)</h4>
+                            <div className="space-y-4">
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Google Cloud API Key</label>
-                                    <input 
-                                        type="password" 
-                                        value={localConfig.googleApiKey}
-                                        onChange={(e) => setLocalConfig({...localConfig, googleApiKey: e.target.value})}
-                                        className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
-                                        placeholder="AIzaSy... (Do Google Cloud Console)"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">OAuth Client ID</label>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Client ID (OAuth 2.0)</label>
                                     <input 
                                         type="text" 
                                         value={localConfig.googleClientId}
                                         onChange={(e) => setLocalConfig({...localConfig, googleClientId: e.target.value})}
-                                        className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
+                                        className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none font-mono text-sm"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">API Key (Google Cloud)</label>
+                                    <input 
+                                        type="password" 
+                                        value={localConfig.googleApiKey}
+                                        onChange={(e) => setLocalConfig({...localConfig, googleApiKey: e.target.value})}
+                                        className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none font-mono text-sm"
                                     />
                                 </div>
                             </div>
                         </div>
 
                         <div>
-                             <div className="flex items-center justify-between mb-2 border-b pb-1 mt-6">
-                                <h4 className="font-bold text-gray-700">Gemini AI (Resumos)</h4>
-                                <button onClick={() => toggleHelp('gemini')} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
-                                    <i className="fas fa-question-circle"></i> Erro 403?
-                                </button>
-                            </div>
-
-                            {activeHelp === 'gemini' && (
-                                <div className="bg-red-50 p-3 rounded text-xs text-red-800 mb-3 border border-red-100">
-                                    <p><strong>Se aparecer "Key Leaked" ou Erro 403:</strong></p>
-                                    <ul className="list-disc pl-4 mt-1 space-y-1">
-                                        <li>Sua chave atual foi bloqueada pelo Google.</li>
-                                        <li>Gere uma nova em <a href="https://aistudio.google.com/app/apikey" target="_blank" className="underline font-bold">Google AI Studio</a>.</li>
-                                        <li>Cole a nova chave abaixo.</li>
-                                    </ul>
-                                </div>
-                            )}
-
+                            <h4 className="font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100 mt-8">Gemini AI (Resumos Automáticos)</h4>
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Gemini API Key (AI Studio)</label>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Gemini API Key</label>
                                 <input 
                                     type="password" 
                                     value={localConfig.geminiApiKey}
                                     onChange={(e) => setLocalConfig({...localConfig, geminiApiKey: e.target.value})}
-                                    className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
-                                    placeholder="AIzaSy... (Chave do AI Studio)"
+                                    className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
+                                    placeholder="AIzaSy..."
                                 />
-                                <p className="text-xs text-gray-500 mt-1">Necessário para gerar resumos automáticos dos documentos.</p>
+                                <p className="text-xs text-slate-400 mt-1">Usada para gerar metadata e resumos antes do envio ao Dify.</p>
                             </div>
                         </div>
                     </div>
                 )}
 
-                {/* --- ABA GERAL --- */}
                 {activeTab === 'general' && (
                     <div className="space-y-6">
-                        <div className="bg-white p-4 rounded border border-gray-200">
-                            <label className="flex items-center gap-3 cursor-pointer">
-                                <input 
-                                    type="checkbox"
-                                    checked={localConfig.autoSync}
-                                    onChange={(e) => setLocalConfig({...localConfig, autoSync: e.target.checked})}
-                                    className="h-5 w-5 text-blue-600 rounded"
-                                />
-                                <span className="font-bold text-gray-700">Ativar Sincronização Automática</span>
-                            </label>
-                            <p className="text-sm text-gray-500 ml-8 mt-1">
-                                O sistema irá verificar periodicamente todos os agentes configurados e sincronizar arquivos alterados.
-                            </p>
-                            <div className="mt-4 ml-8">
-                                <label className="block text-sm text-gray-600 mb-1">Intervalo de Verificação (minutos)</label>
-                                <input 
-                                    type="number"
-                                    min="1"
-                                    max="60"
-                                    value={localConfig.syncInterval}
-                                    onChange={(e) => setLocalConfig({...localConfig, syncInterval: parseInt(e.target.value) || 5})}
-                                    className="w-24 p-2 border border-gray-300 rounded"
-                                />
+                        <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
+                            <div className="flex items-start gap-4">
+                                <div className="p-2 bg-white rounded-lg border border-slate-200 shadow-sm">
+                                    <i className="fas fa-sync text-indigo-500 text-xl"></i>
+                                </div>
+                                <div>
+                                    <label className="flex items-center gap-3 cursor-pointer mb-2">
+                                        <input 
+                                            type="checkbox"
+                                            checked={localConfig.autoSync}
+                                            onChange={(e) => setLocalConfig({...localConfig, autoSync: e.target.checked})}
+                                            className="h-5 w-5 text-indigo-600 rounded focus:ring-indigo-500"
+                                        />
+                                        <span className="font-bold text-slate-700">Sincronização Automática</span>
+                                    </label>
+                                    <p className="text-sm text-slate-500 leading-relaxed">
+                                        Quando ativado, o sistema verificará periodicamente os arquivos marcados como "Monitorar" e enviará atualizações automaticamente para o Agente selecionado.
+                                    </p>
+                                </div>
                             </div>
+                            
+                            {localConfig.autoSync && (
+                                <div className="mt-6 ml-14 animate-fade-in">
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Intervalo de Verificação</label>
+                                    <div className="flex items-center gap-3">
+                                        <input 
+                                            type="number"
+                                            min="1"
+                                            max="60"
+                                            value={localConfig.syncInterval}
+                                            onChange={(e) => setLocalConfig({...localConfig, syncInterval: parseInt(e.target.value) || 5})}
+                                            className="w-20 p-2 border border-slate-300 rounded-lg text-center font-bold text-slate-700"
+                                        />
+                                        <span className="text-sm text-slate-600">minutos</span>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
-                         <div className="text-xs text-gray-400 mt-10">
-                             URL de Origem para OAuth: {window.location.origin}
-                         </div>
+                        <div className="p-4 rounded-xl bg-slate-100 text-xs text-slate-500 font-mono">
+                             Origin: {window.location.origin} <br/>
+                             Build Version: 2.1.0 (TradeSync)
+                        </div>
                     </div>
                 )}
             </div>
         </div>
 
         {/* Footer */}
-        <div className="bg-gray-100 p-4 flex justify-end gap-3 border-t border-gray-200">
-          <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded">Cancelar</button>
+        <div className="bg-slate-50 p-4 flex justify-end gap-3 border-t border-slate-200 shrink-0">
+          <button onClick={onClose} className="px-5 py-2.5 text-slate-600 hover:bg-slate-200 rounded-lg font-medium transition">Cancelar</button>
           <button 
             onClick={() => onSave(localConfig)}
-            className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-bold shadow-md flex items-center gap-2"
+            className="px-6 py-2.5 bg-slate-900 text-white rounded-lg hover:bg-black font-bold shadow-lg shadow-slate-300 flex items-center gap-2 transform active:scale-95 transition"
           >
             <i className="fas fa-save"></i> Salvar Alterações
           </button>
