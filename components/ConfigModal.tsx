@@ -295,21 +295,6 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
                                 </div>
                             </div>
                         </div>
-
-                        <div>
-                            <h4 className="font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100 mt-8">Gemini AI (Resumos Automáticos)</h4>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Gemini API Key</label>
-                                <input 
-                                    type="password" 
-                                    value={localConfig.geminiApiKey}
-                                    onChange={(e) => setLocalConfig({...localConfig, geminiApiKey: e.target.value})}
-                                    className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
-                                    placeholder="AIzaSy..."
-                                />
-                                <p className="text-xs text-slate-400 mt-1">Esta chave já está configurada por padrão para uso interno.</p>
-                            </div>
-                        </div>
                     </div>
                 )}
 
@@ -356,7 +341,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
 
                         <div className="p-4 rounded-xl bg-slate-100 text-xs text-slate-500 font-mono">
                              Origin: {window.location.origin} <br/>
-                             Build Version: 2.2.0 (TradeSync)
+                             Build Version: 2.3.0 (TradeSync - NoGemini)
                         </div>
                     </div>
                 )}
