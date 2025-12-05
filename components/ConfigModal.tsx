@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { AppConfig, DifyProfile, UserProfile } from '../types';
-import { ALLOWED_ADMINS, DEFAULT_DIFY_BASE_URL } from '../constants';
+import { ALLOWED_ADMINS, DEFAULT_DIFY_DATASET_ID } from '../constants';
 
 interface ConfigModalProps {
   config: AppConfig;
@@ -15,7 +15,6 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
   const [localConfig, setLocalConfig] = useState<AppConfig>(config);
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'agents' | 'google' | 'general'>('agents');
-  const [activeHelp, setActiveHelp] = useState<string | null>(null);
 
   // Verificação de Segurança
   const userEmail = user?.email || '';
@@ -39,9 +38,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
       const newProfile: DifyProfile = {
           id: Math.random().toString(36).substr(2, 9),
           name: 'Novo Agente',
-          difyApiKey: '',
-          difyDatasetId: '',
-          difyBaseUrl: DEFAULT_DIFY_BASE_URL
+          difyDatasetId: DEFAULT_DIFY_DATASET_ID
       };
       setLocalConfig(prev => ({
           ...prev,
@@ -85,7 +82,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
                 </div>
                 <h2 className="text-xl font-bold text-gray-800 mb-2">Acesso Restrito</h2>
                 <p className="text-gray-500 mb-6 text-sm">
-                    As configurações de agentes e API são restritas aos administradores. <br/>
+                    As configurações são restritas. <br/>
                     Você está logado como: <span className="font-bold text-gray-700">{userEmail || 'Desconhecido'}</span>
                 </p>
                 <button onClick={onClose} className="px-6 py-2 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-900 transition w-full">
@@ -107,7 +104,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
                 <i className="fas fa-cogs text-indigo-400"></i> Configurações Avançadas
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                  {isSetupMode ? <span className="text-amber-400 font-bold">⚠️ MODO SETUP INICIAL</span> : "Gestão de Agentes e Chaves de API"}
+                  {isSetupMode ? <span className="text-amber-400 font-bold">⚠️ MODO SETUP INICIAL</span> : "Gestão de Agentes e Conexões"}
               </p>
           </div>
           {!isSetupMode && (
@@ -197,58 +194,29 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
                                 </div>
                                 
                                 <div className="bg-slate-50 p-5 rounded-xl border border-slate-200">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <h4 className="font-bold text-slate-700 text-sm uppercase">Credenciais Dify (Dataset)</h4>
-                                        <button onClick={() => setActiveHelp(activeHelp === 'dify' ? null : 'dify')} className="text-xs text-indigo-600 font-bold hover:underline">
-                                            <i className="fas fa-question-circle mr-1"></i> Onde encontrar?
-                                        </button>
-                                    </div>
-
-                                    {activeHelp === 'dify' && (
-                                        <div className="bg-blue-50 p-4 rounded-lg text-xs text-blue-800 mb-4 border border-blue-100 shadow-sm">
-                                            <strong>Como configurar:</strong>
-                                            <ol className="list-decimal pl-4 mt-2 space-y-1">
-                                                <li>No Dify, vá em <strong>Knowledge</strong> e selecione sua base.</li>
-                                                <li>No menu lateral esquerdo, clique em <strong>API</strong>.</li>
-                                                <li>Copie a <strong>API Key</strong> e a <strong>API Base URL</strong>.</li>
-                                                <li>O <strong>Dataset ID</strong> está na URL da página da base (ex: <code>/datasets/<strong>SEU-ID</strong>/documents</code>).</li>
-                                            </ol>
+                                    <h4 className="font-bold text-slate-700 text-sm uppercase mb-3">Conexão Backend (Seguro)</h4>
+                                    
+                                    <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-lg flex items-start gap-3 mb-4">
+                                        <i className="fas fa-shield-alt text-emerald-600 text-xl mt-1"></i>
+                                        <div>
+                                            <h5 className="font-bold text-emerald-800 text-sm">Chave API Protegida</h5>
+                                            <p className="text-xs text-emerald-700 mt-1">
+                                                A chave de API deste agente está armazenada de forma segura no servidor (arquivo .env). 
+                                                O navegador apenas envia o texto e o Dataset ID.
+                                            </p>
                                         </div>
-                                    )}
+                                    </div>
 
                                     <div className="space-y-4">
                                         <div>
-                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">API Key (Necessária)</label>
-                                            <div className="relative">
-                                                <i className="fas fa-key absolute left-3 top-3 text-slate-400 text-xs"></i>
-                                                <input 
-                                                    type="password" 
-                                                    value={currentProfile.difyApiKey}
-                                                    onChange={(e) => updateProfile(currentProfile.id, 'difyApiKey', e.target.value)}
-                                                    className="w-full pl-9 p-2.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-sm shadow-sm"
-                                                    placeholder="dataset-..."
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Dataset ID</label>
-                                                <input 
-                                                    type="text" 
-                                                    value={currentProfile.difyDatasetId}
-                                                    onChange={(e) => updateProfile(currentProfile.id, 'difyDatasetId', e.target.value)}
-                                                    className="w-full p-2.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-sm shadow-sm"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Base URL</label>
-                                                <input 
-                                                    type="text" 
-                                                    value={currentProfile.difyBaseUrl}
-                                                    onChange={(e) => updateProfile(currentProfile.id, 'difyBaseUrl', e.target.value)}
-                                                    className="w-full p-2.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm shadow-sm"
-                                                />
-                                            </div>
+                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Dataset ID (Identificador da Base)</label>
+                                            <input 
+                                                type="text" 
+                                                value={currentProfile.difyDatasetId}
+                                                onChange={(e) => updateProfile(currentProfile.id, 'difyDatasetId', e.target.value)}
+                                                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-sm shadow-sm"
+                                            />
+                                            <p className="text-[10px] text-slate-400 mt-1">Encontrado na URL do Dify (Knowledge &gt; Sua Base)</p>
                                         </div>
                                     </div>
                                 </div>
@@ -266,7 +234,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
                             </div>
                         )}
                         <div className="bg-amber-50 border-l-4 border-amber-400 p-4 rounded text-sm text-amber-800">
-                             <strong>Atenção:</strong> As chaves do Google Cloud (Drive) não podem ser adivinhadas pelo sistema, elas são únicas do seu projeto no Google Cloud Console.
+                             <strong>Atenção:</strong> As chaves do Google Cloud (Drive) abaixo são usadas para o login do usuário (OAuth). Elas são visíveis publicamente no Client-Side (padrão Google).
                         </div>
 
                         <div>
@@ -281,7 +249,6 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
                                         className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none font-mono text-sm"
                                         placeholder="Ex: 123456...apps.googleusercontent.com"
                                     />
-                                    <p className="text-[10px] text-slate-400 mt-1">Disponível em: Google Cloud Console &gt; APIs & Services &gt; Credentials</p>
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">API Key (Google Cloud) <span className="text-red-500">*</span></label>
@@ -341,7 +308,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
 
                         <div className="p-4 rounded-xl bg-slate-100 text-xs text-slate-500 font-mono">
                              Origin: {window.location.origin} <br/>
-                             Build Version: 2.3.0 (TradeSync - NoGemini)
+                             Build Version: 2.4.0 (TradeSync - Secure Backend)
                         </div>
                     </div>
                 )}
