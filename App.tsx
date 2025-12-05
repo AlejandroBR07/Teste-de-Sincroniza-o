@@ -27,7 +27,7 @@ const App: React.FC = () => {
   // --- CONFIGURAÇÃO E ESTADO ---
   const [config, setConfig] = useState<AppConfig>(() => {
       const saved = localStorage.getItem(STORAGE_KEY_CONFIG);
-      const parsed = saved ? JSON.parse(saved) : null;
+      let parsed: AppConfig | null = saved ? JSON.parse(saved) : null;
       
       const defaultProfile: DifyProfile = {
           id: 'default-trade',
@@ -38,15 +38,23 @@ const App: React.FC = () => {
       };
 
       if (!parsed) {
-          return {
+          parsed = {
             googleClientId: '',
             googleApiKey: '',
-            geminiApiKey: DEFAULT_GEMINI_KEY, // Default injection
+            geminiApiKey: DEFAULT_GEMINI_KEY, 
             profiles: [defaultProfile],
             activeProfileId: defaultProfile.id,
             autoSync: false,
             syncInterval: 5
           };
+      } else {
+        // Se já existe config salva, forçamos a atualização da chave Gemini e do Dataset se estiverem vazios ou diferentes do default
+        // para garantir que a chave "injetada" funcione.
+        if (!parsed.geminiApiKey) parsed.geminiApiKey = DEFAULT_GEMINI_KEY;
+        const profile = parsed.profiles.find(p => p.id === parsed.activeProfileId);
+        if (profile && !profile.difyDatasetId) {
+             profile.difyDatasetId = DEFAULT_DIFY_DATASET_ID;
+        }
       }
       return parsed;
   });
