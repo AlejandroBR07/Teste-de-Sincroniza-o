@@ -20,13 +20,20 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
   // Verificação de Segurança
   const userEmail = user?.email || '';
   const isAdmin = ALLOWED_ADMINS.includes(userEmail);
+  
+  // MODO SETUP: Se não tem Client ID configurado, libera o acesso para configurar
+  const isSetupMode = !config.googleClientId || !config.googleApiKey;
 
   useEffect(() => {
     setLocalConfig(config);
     if (config.profiles.length > 0 && !editingProfileId) {
         setEditingProfileId(config.profiles[0].id);
     }
-  }, [isOpen, config]);
+    // Se estiver em modo setup, força a aba do Google
+    if (isSetupMode && isOpen) {
+        setActiveTab('google');
+    }
+  }, [isOpen, config, isSetupMode]);
 
   const handleAddProfile = () => {
       const newProfile: DifyProfile = {
@@ -68,8 +75,8 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
 
   if (!isOpen) return null;
 
-  // Renderização de Bloqueio se não for Admin
-  if (!isAdmin) {
+  // Renderização de Bloqueio APENAS se não for Admin E não for Setup Mode
+  if (!isAdmin && !isSetupMode) {
       return (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-[9000] p-4 animate-fade-in">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
@@ -99,27 +106,33 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
               <h2 className="text-lg font-bold flex items-center gap-2">
                 <i className="fas fa-cogs text-indigo-400"></i> Configurações Avançadas
               </h2>
-              <p className="text-xs text-slate-400 mt-0.5">Gestão de Agentes e Chaves de API</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                  {isSetupMode ? <span className="text-amber-400 font-bold">⚠️ MODO SETUP INICIAL</span> : "Gestão de Agentes e Chaves de API"}
+              </p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white transition w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-800">
-            <i className="fas fa-times text-lg"></i>
-          </button>
+          {!isSetupMode && (
+            <button onClick={onClose} className="text-slate-400 hover:text-white transition w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-800">
+                <i className="fas fa-times text-lg"></i>
+            </button>
+          )}
         </div>
 
         <div className="flex flex-1 overflow-hidden">
             {/* Sidebar */}
             <div className="w-56 bg-slate-50 border-r border-slate-200 flex flex-col p-3 gap-2 shrink-0">
                 <button 
+                    onClick={() => setActiveTab('google')}
+                    className={`p-3 text-left rounded-xl text-sm font-bold transition flex items-center gap-3 ${activeTab === 'google' ? 'bg-white shadow-sm text-emerald-600 ring-1 ring-slate-200' : 'text-slate-600 hover:bg-slate-100'}`}
+                >
+                    <i className="fab fa-google w-5 text-center"></i> 
+                    Conexões
+                    {isSetupMode && <span className="w-2 h-2 rounded-full bg-rose-500 ml-auto animate-pulse"></span>}
+                </button>
+                <button 
                     onClick={() => setActiveTab('agents')}
                     className={`p-3 text-left rounded-xl text-sm font-bold transition flex items-center gap-3 ${activeTab === 'agents' ? 'bg-white shadow-sm text-indigo-600 ring-1 ring-slate-200' : 'text-slate-600 hover:bg-slate-100'}`}
                 >
                     <i className="fas fa-robot w-5 text-center"></i> Agentes Dify
-                </button>
-                <button 
-                    onClick={() => setActiveTab('google')}
-                    className={`p-3 text-left rounded-xl text-sm font-bold transition flex items-center gap-3 ${activeTab === 'google' ? 'bg-white shadow-sm text-emerald-600 ring-1 ring-slate-200' : 'text-slate-600 hover:bg-slate-100'}`}
-                >
-                    <i className="fab fa-google w-5 text-center"></i> Conexões
                 </button>
                 <button 
                     onClick={() => setActiveTab('general')}
@@ -205,7 +218,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
 
                                     <div className="space-y-4">
                                         <div>
-                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">API Key</label>
+                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">API Key (Necessária)</label>
                                             <div className="relative">
                                                 <i className="fas fa-key absolute left-3 top-3 text-slate-400 text-xs"></i>
                                                 <input 
@@ -246,29 +259,38 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
 
                 {activeTab === 'google' && (
                     <div className="space-y-6">
+                         {isSetupMode && (
+                            <div className="bg-rose-50 border-l-4 border-rose-500 p-4 rounded text-sm text-rose-800 mb-4 animate-fade-in">
+                                <h4 className="font-bold mb-1"><i className="fas fa-exclamation-triangle mr-2"></i> Configuração Inicial Necessária</h4>
+                                <p>Para logar e sincronizar arquivos, você precisa inserir as credenciais do <strong>Google Cloud</strong> abaixo.</p>
+                            </div>
+                        )}
                         <div className="bg-amber-50 border-l-4 border-amber-400 p-4 rounded text-sm text-amber-800">
-                             <strong>Atenção:</strong> Estas chaves conectam o sistema ao Google Cloud e ao Gemini. Alterações podem quebrar o acesso para todos.
+                             <strong>Atenção:</strong> As chaves do Google Cloud (Drive) não podem ser adivinhadas pelo sistema, elas são únicas do seu projeto no Google Cloud Console.
                         </div>
 
                         <div>
                             <h4 className="font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100">Google Drive API (OAuth & Access)</h4>
                             <div className="space-y-4">
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Client ID (OAuth 2.0)</label>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Client ID (OAuth 2.0) <span className="text-red-500">*</span></label>
                                     <input 
                                         type="text" 
                                         value={localConfig.googleClientId}
                                         onChange={(e) => setLocalConfig({...localConfig, googleClientId: e.target.value})}
                                         className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none font-mono text-sm"
+                                        placeholder="Ex: 123456...apps.googleusercontent.com"
                                     />
+                                    <p className="text-[10px] text-slate-400 mt-1">Disponível em: Google Cloud Console &gt; APIs & Services &gt; Credentials</p>
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">API Key (Google Cloud)</label>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">API Key (Google Cloud) <span className="text-red-500">*</span></label>
                                     <input 
                                         type="password" 
                                         value={localConfig.googleApiKey}
                                         onChange={(e) => setLocalConfig({...localConfig, googleApiKey: e.target.value})}
                                         className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none font-mono text-sm"
+                                        placeholder="AIzaSy..."
                                     />
                                 </div>
                             </div>
@@ -285,7 +307,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
                                     className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
                                     placeholder="AIzaSy..."
                                 />
-                                <p className="text-xs text-slate-400 mt-1">Usada para gerar metadata e resumos antes do envio ao Dify.</p>
+                                <p className="text-xs text-slate-400 mt-1">Esta chave já está configurada por padrão para uso interno.</p>
                             </div>
                         </div>
                     </div>
@@ -334,7 +356,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
 
                         <div className="p-4 rounded-xl bg-slate-100 text-xs text-slate-500 font-mono">
                              Origin: {window.location.origin} <br/>
-                             Build Version: 2.1.0 (TradeSync)
+                             Build Version: 2.2.0 (TradeSync)
                         </div>
                     </div>
                 )}
@@ -343,12 +365,12 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
 
         {/* Footer */}
         <div className="bg-slate-50 p-4 flex justify-end gap-3 border-t border-slate-200 shrink-0">
-          <button onClick={onClose} className="px-5 py-2.5 text-slate-600 hover:bg-slate-200 rounded-lg font-medium transition">Cancelar</button>
+          {!isSetupMode && <button onClick={onClose} className="px-5 py-2.5 text-slate-600 hover:bg-slate-200 rounded-lg font-medium transition">Cancelar</button>}
           <button 
             onClick={() => onSave(localConfig)}
             className="px-6 py-2.5 bg-slate-900 text-white rounded-lg hover:bg-black font-bold shadow-lg shadow-slate-300 flex items-center gap-2 transform active:scale-95 transition"
           >
-            <i className="fas fa-save"></i> Salvar Alterações
+            <i className="fas fa-save"></i> {isSetupMode ? "Salvar e Iniciar" : "Salvar Alterações"}
           </button>
         </div>
       </div>
