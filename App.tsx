@@ -111,9 +111,6 @@ const App: React.FC = () => {
         const serverConfig = await res.json();
         setConfig(serverConfig);
         setLoadingConfig(false);
-        
-        // MODIFICADO: Removemos a lógica que abria o modal automaticamente.
-        // Se o server não tiver config, o botão de conectar vai apenas falhar/avisar.
     } catch (e: any) {
         console.error(e);
         notify("Erro de Conexão", `Backend offline ou incorreto.`, "error");
@@ -269,9 +266,8 @@ const App: React.FC = () => {
   };
 
   const handleConnectDrive = () => {
-    // MODIFICADO: Não abre mais o modal. Apenas avisa se o servidor estiver "quebrado".
     if (!config.googleClientId) { 
-        notify("Erro de Sistema", "O servidor não foi configurado corretamente pelo administrador. Client ID ausente.", "error");
+        notify("Erro de Sistema", "O servidor não foi configurado corretamente. Client ID ausente.", "error");
         return; 
     }
     if (tokenClient) tokenClient.requestAccessToken({ prompt: 'consent' });
@@ -449,31 +445,40 @@ ${content}`;
   if (loadingConfig) {
       return (
           <div className="min-h-screen flex items-center justify-center bg-slate-50">
-              <div className="text-center animate-pulse">
-                  <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                     <i className="fas fa-satellite-dish text-indigo-500 text-2xl"></i>
-                  </div>
-                  <h2 className="text-xl font-bold text-slate-700">Conectando ao Backend...</h2>
-                  <p className="text-slate-400 text-sm mt-2">{BACKEND_URL}</p>
+              <div className="text-center">
+                  <div className="w-12 h-12 border-4 border-slate-900 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                  <h2 className="text-lg font-bold text-slate-800">Conectando...</h2>
               </div>
           </div>
       );
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 font-sans text-slate-800">
-      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-6 h-18 flex items-center justify-between py-3">
-            <h1 className="text-xl font-extrabold text-slate-900 flex items-center gap-3 tracking-tight">
-                <span className="bg-indigo-600 text-white w-8 h-8 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-200">
-                    <i className="fas fa-sync-alt text-sm"></i>
-                </span>
-                TradeSync
-            </h1>
+    <div className="min-h-screen flex flex-col bg-slate-100 font-sans text-slate-900">
+      {/* HEADER PROFISSIONAL (ESCURO) */}
+      <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-30 shadow-md">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+                <div className="bg-emerald-500 w-8 h-8 rounded flex items-center justify-center">
+                    <i className="fas fa-sync text-slate-900 text-sm"></i>
+                </div>
+                <h1 className="text-lg font-bold tracking-tight">TradeSync <span className="text-slate-500 text-xs font-normal ml-2">v2.0 Enterprise</span></h1>
+            </div>
+            
+            {/* User Profile Mini (Header) */}
+            {isConnected && userProfile && (
+                <div className="flex items-center gap-4">
+                     <div className="text-right hidden md:block">
+                        <div className="text-sm font-medium text-slate-200">{userProfile.name}</div>
+                        <div className="text-xs text-slate-500">{userProfile.email}</div>
+                     </div>
+                     <img src={userProfile.picture} alt="" className="w-9 h-9 rounded bg-slate-700 object-cover border border-slate-700" />
+                </div>
+            )}
         </div>
       </header>
 
-      <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-6 lg:p-8">
+      <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-6">
         <Dashboard 
             files={files}
             config={config}
