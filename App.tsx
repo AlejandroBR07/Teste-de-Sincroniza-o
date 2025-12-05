@@ -5,9 +5,8 @@ import { ConfigModal } from './components/ConfigModal';
 import { Dashboard } from './components/Dashboard';
 import { ToastContainer } from './components/ToastContainer';
 import { ConfirmationModal } from './components/ConfirmationModal';
-import { generateDocumentSummary } from './services/geminiService';
 import { syncFileToDify } from './services/difyService';
-import { DEFAULT_DIFY_DATASET_ID, DEFAULT_DIFY_BASE_URL, DEFAULT_GEMINI_KEY } from './constants';
+import { DEFAULT_DIFY_DATASET_ID, DEFAULT_DIFY_BASE_URL } from './constants';
 
 declare global {
   interface Window {
@@ -41,19 +40,20 @@ const App: React.FC = () => {
           parsed = {
             googleClientId: '',
             googleApiKey: '',
-            geminiApiKey: DEFAULT_GEMINI_KEY, 
             profiles: [defaultProfile],
             activeProfileId: defaultProfile.id,
             autoSync: false,
             syncInterval: 5
           };
       } else {
-        // Se já existe config salva, forçamos a atualização da chave Gemini e do Dataset se estiverem vazios ou diferentes do default
-        // para garantir que a chave "injetada" funcione.
-        if (!parsed.geminiApiKey) parsed.geminiApiKey = DEFAULT_GEMINI_KEY;
+        // Garantia de update do dataset se necessário
         const profile = parsed.profiles.find(p => p.id === parsed.activeProfileId);
         if (profile && !profile.difyDatasetId) {
              profile.difyDatasetId = DEFAULT_DIFY_DATASET_ID;
+        }
+        // Remove Gemini key se existir no storage antigo (opcional, mas limpa o state)
+        if ('geminiApiKey' in parsed) {
+            delete (parsed as any).geminiApiKey;
         }
       }
       return parsed;
@@ -333,16 +333,11 @@ const App: React.FC = () => {
                 content = resp.body;
             }
 
-            // Generate Summary
-            let summary = "N/A";
-            if (configRef.current.geminiApiKey) {
-                 summary = await generateDocumentSummary(content, configRef.current.geminiApiKey);
-            }
+            // Removida geração de resumo (Gemini)
             
             const enhancedContent = `---
 Arquivo: ${file.name}
 Data Mod: ${file.modifiedTime}
-Resumo: ${summary}
 Link Drive: ${file.webViewLink || 'N/A'}
 ---
 ${content}`;
