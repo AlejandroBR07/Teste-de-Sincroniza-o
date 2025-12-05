@@ -152,7 +152,8 @@ const App: React.FC = () => {
               else {
                   const modTime = new Date(dFile.modifiedTime).getTime();
                   const syncTime = new Date(lastSyncTimeStr).getTime();
-                  status = (modTime > (syncTime + 60000)) ? 'pendente' : 'sincronizado';
+                  // CORREÇÃO: Removido buffer de 60s. Se modificou 1ms depois, já é pendente.
+                  status = (modTime > syncTime) ? 'pendente' : 'sincronizado';
               }
           }
           return {
@@ -208,8 +209,12 @@ const App: React.FC = () => {
                 const client = window.google.accounts.oauth2.initTokenClient({
                     client_id: config.googleClientId,
                     scope: SCOPES,
+                    // CORREÇÃO: Callback para tratar a resposta
                     callback: async (resp: any) => {
-                        if (resp.error) return;
+                        if (resp.error) {
+                            console.error("Token Error:", resp);
+                            return;
+                        }
                         setAccessToken(resp.access_token);
                         if (window.gapi.client) window.gapi.client.setToken(resp);
                         await fetchUserProfile(resp.access_token);
@@ -231,9 +236,13 @@ const App: React.FC = () => {
       } catch (e) {}
   };
 
-  const handleConnectDrive = () => {
-    if (!config.googleClientId) return;
-    if (tokenClient) tokenClient.requestAccessToken({ prompt: 'consent' });
+  // CORREÇÃO: Prompt vazio para permitir renovação silenciosa (se possível) ou 1 clique
+  const handleConnectDrive = (forceConsent = false) => {
+    if (!config.googleClientId || !tokenClient) return;
+    
+    // Se forçar consentimento (ex: troca de conta), usa 'consent'. 
+    // Senão, usa '' para tentar logar direto se já houve permissão anterior.
+    tokenClient.requestAccessToken({ prompt: forceConsent ? 'consent' : '' });
   };
 
   const handleDisconnect = () => {
@@ -278,7 +287,10 @@ const App: React.FC = () => {
             if(queryTerm) notify("Pronto", `${dFiles.length} arquivos encontrados.`, "success");
         }
     } catch (err: any) {
-        if (err.status === 401) setIsConnected(false);
+        if (err.status === 401) {
+            setIsConnected(false);
+            notify("Sessão Expirada", "Clique em Conectar para renovar o acesso.", "warning");
+        }
     }
   };
 
@@ -305,10 +317,10 @@ const App: React.FC = () => {
                 content = resp.body;
             }
 
+            // CORREÇÃO: Removido o campo "Link" para não enviar URL ao Dify
             const enhancedContent = `---
 Arquivo: ${file.name}
 Data Mod: ${file.modifiedTime}
-Link: ${file.webViewLink || 'N/A'}
 ---
 ${content}`;
 
@@ -331,12 +343,15 @@ ${content}`;
         } catch (err: any) {
             notify("Falha no Envio", err.message, "error");
             if (isCurrentView) setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'erro' } : f));
+            
+            // Se falhar por 401 (token expirado) durante sync
+            if (err.status === 401 || (err.result && err.result.error && err.result.error.code === 401)) {
+                setIsConnected(false);
+            }
         }
   };
 
-  // --- NOVA LÓGICA DE SYNC ALL ---
   const handleSyncAll = () => {
-      // Pega TODOS os arquivos monitorados (marcados com checkbox)
       const candidates = files.filter(f => f.watched);
 
       if (candidates.length === 0) {
@@ -344,7 +359,6 @@ ${content}`;
           return;
       }
 
-      // Conta quantos já estão tecnicamente atualizados, apenas para informar o usuário
       const upToDateCount = candidates.filter(f => f.status === 'sincronizado').length;
       const pendingCount = candidates.length - upToDateCount;
 
@@ -363,7 +377,6 @@ ${content}`;
           action: () => {
               setIsSyncing(true);
               (async () => {
-                  // Força o envio de todos da lista candidates
                   for (const f of candidates) {
                       await processSync(f);
                   }
@@ -378,12 +391,10 @@ ${content}`;
     let interval: ReturnType<typeof setInterval>;
     if (config.autoSync && isConnected && !loadingConfig) {
         
-        // Timer de Auto Sync
         interval = setInterval(async () => {
             if (isSyncingRef.current) return;
             
             try {
-                // Busca fresca no Drive para garantir dados reais
                 const response = await window.gapi.client.drive.files.list({
                     'pageSize': 100,
                     'fields': 'files(id, name, mimeType, modifiedTime)',
@@ -402,15 +413,14 @@ ${content}`;
                     if (watchedIds.length === 0) continue;
 
                     const filesToSync = driveFiles.filter(dFile => {
-                        // Só processa se estiver na lista de monitorados (checkbox)
                         if (!watchedIds.includes(dFile.id)) return false;
                         
                         const lastSync = history[dFile.id];
-                        // Se nunca sincronizou, sync.
                         if (!lastSync) return true;
                         
-                        // Se mudou depois do último sync, sync.
-                        return new Date(dFile.modifiedTime).getTime() > (new Date(lastSync).getTime() + 60000);
+                        // CORREÇÃO: Comparação estrita sem buffer.
+                        // Se a data de modificação for maior que o último sync, envia.
+                        return new Date(dFile.modifiedTime).getTime() > new Date(lastSync).getTime();
                     });
 
                     if (filesToSync.length > 0) {
@@ -429,13 +439,16 @@ ${content}`;
                 }
                 
                 if (!foundAnyUpdate) {
-                    // Opcional: Log silencioso para debug
-                    console.log(`[AutoSync] Ciclo rodou às ${new Date().toLocaleTimeString()}. Nada novo.`);
+                     // Debug silencioso
                 }
 
             } catch (e: any) { 
                 console.error("Erro AutoSync:", e);
-                if (e.status === 401) { setIsConnected(false); clearInterval(interval); }
+                if (e.status === 401) { 
+                    setIsConnected(false); 
+                    clearInterval(interval); 
+                    notify("AutoSync Pausado", "Sessão do Google expirou.", "error");
+                }
             }
         }, config.syncInterval * 60 * 1000);
     }
@@ -491,7 +504,7 @@ ${content}`;
             user={userProfile}
             isSyncing={isSyncing}
             isConnected={isConnected}
-            onConnectDrive={handleConnectDrive}
+            onConnectDrive={() => handleConnectDrive(false)} 
             onDisconnect={handleDisconnect}
             onSyncAll={handleSyncAll}
             onSyncOne={processSync}
