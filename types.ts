@@ -8,6 +8,7 @@ export interface DocFile {
   status: 'pendente' | 'sincronizado' | 'erro' | 'sincronizando' | 'ignorado';
   content?: string;
   webViewLink?: string;
+  iconLink?: string;
   watched: boolean; // Se true, entra no ciclo de auto-sync
 }
 
@@ -34,15 +35,21 @@ export interface AppConfig {
   syncInterval: number;
 }
 
-export interface SyncLog {
+export interface UserProfile {
+  name: string;
+  email: string;
+  picture: string;
+}
+
+export interface Notification {
   id: string;
-  timestamp: Date;
+  title: string;
   message: string;
-  type: 'info' | 'sucesso' | 'erro';
+  type: 'success' | 'error' | 'info' | 'warning';
+  duration?: number;
 }
 
 export enum ViewState {
   DASHBOARD = 'DASHBOARD',
   SETTINGS = 'SETTINGS',
-  LOGS = 'LOGS'
 }
