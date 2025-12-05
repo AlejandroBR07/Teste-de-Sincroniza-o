@@ -1,5 +1,6 @@
 
 import { AppConfig, DifyProfile } from "../types";
+import { BACKEND_URL } from "../constants";
 
 export const syncFileToDify = async (
   fileContent: string,
@@ -15,30 +16,44 @@ export const syncFileToDify = async (
   }
 
   // Agora enviamos para o NOSSO backend, não direto para o Dify
-  // O Backend é responsável por injetar a API Key segura
   try {
-    // Detecta se estamos rodando em dev (Vite) ou prod (Server.js)
-    // Em produção, a API é relativa à origem.
-    const apiUrl = '/api/dify/sync';
+    let baseUrl = BACKEND_URL.replace(/\/$/, ""); 
+    
+    // Fallback se não configurado e rodando local
+    if ((!baseUrl || baseUrl.includes("SEU-LINK")) && window.location.hostname === 'localhost') {
+        baseUrl = "http://localhost:3000";
+    }
+
+    const apiUrl = `${baseUrl}/api/dify/sync`;
 
     const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "ngrok-skip-browser-warning": "true" // ESSENCIAL para Ngrok Free
       },
       body: JSON.stringify({
         name: fileName,
         text: fileContent,
-        datasetId: profileToUse.difyDatasetId, // O DatasetID ainda é enviado pelo front, pois define o "destino"
+        datasetId: profileToUse.difyDatasetId, 
       }),
     });
 
     if (!response.ok) {
+        // Tenta ler erro JSON, se falhar, lê texto
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.indexOf("application/json") === -1) {
+             throw new Error("Erro de Protocolo: O servidor retornou HTML (possível erro de URL ou Proxy).");
+        }
+
         const errorData = await response.json().catch(() => ({}));
         
-        // Fallback para Dev Mode: Se a rota /api/dify/sync não existir (ex: rodando só 'vite' sem 'node server.js')
         if (response.status === 404) {
-             throw new Error("Erro de Conexão: O Backend seguro (server.js) não parece estar rodando. Inicie com 'npm run start'.");
+             throw new Error(`Servidor Backend não encontrado em: ${apiUrl}. Verifique a constante BACKEND_URL.`);
+        }
+        
+        if (response.status === 0 || response.status === 500) {
+            throw new Error("Erro de conexão com o servidor. Verifique se o Backend está rodando e se o CORS está liberado.");
         }
 
         throw new Error(errorData.message || `Erro HTTP ${response.status}`);
