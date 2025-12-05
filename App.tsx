@@ -18,7 +18,7 @@ declare global {
 // Scopes expandidos para pegar email do usuário
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
 const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
-const STORAGE_KEY_CONFIG = 'docsync_config_v3'; // Bump version
+const STORAGE_KEY_CONFIG = 'docsync_config_v4'; // Bump version for backend migration
 const STORAGE_KEY_WATCHED_MAP = 'docsync_watched_files_map';
 const STORAGE_KEY_SYNC_HISTORY_MAP = 'docsync_sync_history_map';
 
@@ -31,7 +31,6 @@ const App: React.FC = () => {
       const defaultProfile: DifyProfile = {
           id: 'default-trade',
           name: 'TradeStars KB',
-          difyApiKey: '',
           difyDatasetId: DEFAULT_DIFY_DATASET_ID,
           difyBaseUrl: DEFAULT_DIFY_BASE_URL
       };
@@ -46,15 +45,11 @@ const App: React.FC = () => {
             syncInterval: 5
           };
       } else {
-        // Garantia de update do dataset se necessário
-        const profile = parsed.profiles.find(p => p.id === parsed.activeProfileId);
-        if (profile && !profile.difyDatasetId) {
-             profile.difyDatasetId = DEFAULT_DIFY_DATASET_ID;
-        }
-        // Remove Gemini key se existir no storage antigo (opcional, mas limpa o state)
-        if ('geminiApiKey' in parsed) {
-            delete (parsed as any).geminiApiKey;
-        }
+        // Limpeza de chaves antigas que possam estar no localStorage
+        parsed.profiles = parsed.profiles.map((p: any) => {
+            const { difyApiKey, ...rest } = p; // Remove chave se existir
+            return rest as DifyProfile;
+        });
       }
       return parsed;
   });
@@ -175,10 +170,8 @@ const App: React.FC = () => {
       };
 
       if (!currentlyWatched) {
-          // Se for ativar, pede confirmação leve (opcional, aqui direto para fluidez, ou via modal se preferir)
           action();
       } else {
-          // Se for desativar
           action();
       }
   };
@@ -333,8 +326,6 @@ const App: React.FC = () => {
                 content = resp.body;
             }
 
-            // Removida geração de resumo (Gemini)
-            
             const enhancedContent = `---
 Arquivo: ${file.name}
 Data Mod: ${file.modifiedTime}
