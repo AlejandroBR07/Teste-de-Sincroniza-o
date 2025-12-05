@@ -15,15 +15,16 @@ export interface DocFile {
 export interface DifyProfile {
   id: string;
   name: string;
-  difyApiKey: string;
+  // difyApiKey removido: gerenciado pelo backend .env
   difyDatasetId: string;
-  difyBaseUrl: string;
+  // BaseURL mantido caso queira suportar múltiplos endpoints, mas o backend controla o default
+  difyBaseUrl?: string; 
 }
 
 export interface AppConfig {
   // Configurações Globais (Google)
   googleClientId: string;
-  googleApiKey: string; // Chave do Cloud Console (Drive)
+  googleApiKey: string; // Chave do Cloud Console (Drive) - Pública/Restrita por Referrer
   
   // Gestão de Agentes
   profiles: DifyProfile[];
