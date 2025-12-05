@@ -96,27 +96,34 @@ export const Dashboard: React.FC<DashboardProps> = ({
              </div>
              
              {/* Search */}
-             <div className="relative w-full lg:max-w-md pt-4 lg:pt-5">
-                 <input 
-                    type="text" 
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && onDeepSearch(searchTerm)}
-                    placeholder="Buscar documentos no Drive..."
-                    className="w-full pl-10 pr-10 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:border-slate-800 focus:ring-1 focus:ring-slate-800 outline-none transition shadow-sm"
-                />
-                {/* LUPA CENTRALIZADA */}
-                <div className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-gray-400">
-                     <i className="fas fa-search text-sm"></i>
-                </div>
-                {searchTerm && (
-                    <button 
-                        onClick={() => onDeepSearch(searchTerm)}
-                        className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded text-xs font-bold uppercase"
-                    >
-                        Ir
-                    </button>
-                )}
+             <div className="w-full lg:max-w-md pt-4 lg:pt-5">
+                 <div className="relative w-full h-10">
+                    <input 
+                        type="text" 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && onDeepSearch(searchTerm)}
+                        placeholder="Buscar documentos no Drive..."
+                        className="w-full h-full pl-10 pr-12 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:border-slate-800 focus:ring-1 focus:ring-slate-800 outline-none transition shadow-sm"
+                    />
+                    
+                    {/* ÍCONE DE LUPA (Absolute, Centralizado Verticalmente) */}
+                    <div className="absolute left-0 top-0 h-full w-10 flex items-center justify-center text-gray-400 pointer-events-none">
+                        <i className="fas fa-search text-sm"></i>
+                    </div>
+
+                    {/* BOTÃO IR (Absolute, Centralizado Verticalmente) */}
+                    {searchTerm && (
+                        <div className="absolute right-1 top-0 h-full flex items-center">
+                            <button 
+                                onClick={() => onDeepSearch(searchTerm)}
+                                className="bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1 rounded text-xs font-bold uppercase transition"
+                            >
+                                IR
+                            </button>
+                        </div>
+                    )}
+                 </div>
              </div>
          </div>
 
