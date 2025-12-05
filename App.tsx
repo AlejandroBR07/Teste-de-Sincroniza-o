@@ -1,12 +1,12 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { DocFile, AppConfig, DifyProfile, UserProfile, Notification } from './types';
+import { DocFile, AppConfig, UserProfile, Notification, DifyProfile } from './types';
 import { ConfigModal } from './components/ConfigModal';
 import { Dashboard } from './components/Dashboard';
 import { ToastContainer } from './components/ToastContainer';
 import { ConfirmationModal } from './components/ConfirmationModal';
 import { syncFileToDify } from './services/difyService';
-import { DEFAULT_DIFY_DATASET_ID, DEFAULT_DIFY_BASE_URL } from './constants';
+import { BACKEND_URL } from './constants';
 
 declare global {
   interface Window {
@@ -15,49 +15,28 @@ declare global {
   }
 }
 
-// Scopes expandidos para pegar email do usuário
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
 const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
-const STORAGE_KEY_CONFIG = 'docsync_config_v4'; // Bump version for backend migration
 const STORAGE_KEY_WATCHED_MAP = 'docsync_watched_files_map';
 const STORAGE_KEY_SYNC_HISTORY_MAP = 'docsync_sync_history_map';
 
 const App: React.FC = () => {
-  // --- CONFIGURAÇÃO E ESTADO ---
-  const [config, setConfig] = useState<AppConfig>(() => {
-      const saved = localStorage.getItem(STORAGE_KEY_CONFIG);
-      let parsed: AppConfig | null = saved ? JSON.parse(saved) : null;
-      
-      const defaultProfile: DifyProfile = {
-          id: 'default-trade',
-          name: 'TradeStars KB',
-          difyDatasetId: DEFAULT_DIFY_DATASET_ID,
-          difyBaseUrl: DEFAULT_DIFY_BASE_URL
-      };
-
-      if (!parsed) {
-          parsed = {
-            googleClientId: '',
-            googleApiKey: '',
-            profiles: [defaultProfile],
-            activeProfileId: defaultProfile.id,
-            autoSync: false,
-            syncInterval: 5
-          };
-      } else {
-        // Limpeza de chaves antigas que possam estar no localStorage
-        parsed.profiles = parsed.profiles.map((p: any) => {
-            const { difyApiKey, ...rest } = p; // Remove chave se existir
-            return rest as DifyProfile;
-        });
-      }
-      return parsed;
+  // --- CONFIGURAÇÃO ---
+  // Estado inicial vazio, pois vamos buscar do servidor
+  const [config, setConfig] = useState<AppConfig>({
+      googleClientId: '',
+      googleApiKey: '',
+      profiles: [],
+      activeProfileId: '',
+      autoSync: false,
+      syncInterval: 5
   });
+  const [loadingConfig, setLoadingConfig] = useState(true);
 
   // User State
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
-  // Mapas de persistência
+  // Mapas de persistência (Estes ficam no navegador do usuário mesmo)
   const [watchedFilesMap, setWatchedFilesMap] = useState<Record<string, string[]>>(() => {
       const saved = localStorage.getItem(STORAGE_KEY_WATCHED_MAP);
       return saved ? JSON.parse(saved) : {};
@@ -70,19 +49,14 @@ const App: React.FC = () => {
 
   const [rawDriveFiles, setRawDriveFiles] = useState<any[]>([]); 
   const [files, setFiles] = useState<DocFile[]>([]); 
-  
-  // UI States
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  
-  // Auth Internals
   const [tokenClient, setTokenClient] = useState<any>(null);
   const [gapiInited, setGapiInited] = useState(false);
   const [accessToken, setAccessToken] = useState<string | null>(null);
 
-  // Modal Control
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -91,27 +65,81 @@ const App: React.FC = () => {
     isDestructive?: boolean;
   }>({ isOpen: false, title: '', message: '', action: () => {} });
 
-  // Refs
   const configRef = useRef(config);
   const watchedMapRef = useRef(watchedFilesMap);
   const historyMapRef = useRef(syncHistoryMap);
   const isSyncingRef = useRef(isSyncing);
 
-  // --- PERSISTÊNCIA ---
-  useEffect(() => { configRef.current = config; localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(config)); }, [config]);
+  // --- EFEITOS DE PERSISTÊNCIA LOCAL ---
+  useEffect(() => { configRef.current = config; }, [config]);
   useEffect(() => { watchedMapRef.current = watchedFilesMap; localStorage.setItem(STORAGE_KEY_WATCHED_MAP, JSON.stringify(watchedFilesMap)); }, [watchedFilesMap]);
   useEffect(() => { historyMapRef.current = syncHistoryMap; localStorage.setItem(STORAGE_KEY_SYNC_HISTORY_MAP, JSON.stringify(syncHistoryMap)); }, [syncHistoryMap]);
   useEffect(() => { isSyncingRef.current = isSyncing; }, [isSyncing]);
 
-  // --- NOTIFICATION SYSTEM ---
   const notify = (title: string, message: string, type: Notification['type'] = 'info') => {
       const id = Math.random().toString(36).substr(2, 9);
       setNotifications(prev => [...prev, { id, title, message, type }]);
   };
   const removeNotification = (id: string) => setNotifications(prev => prev.filter(n => n.id !== id));
 
-  // --- CORE LOGIC ---
+  // --- CARREGAR CONFIG DO SERVIDOR ---
+  const loadConfigFromServer = async () => {
+    try {
+        const cleanUrl = BACKEND_URL.replace(/\/$/, "");
+        if (cleanUrl.includes("SEU-LINK")) {
+            throw new Error("URL do Backend não configurada em constants.ts");
+        }
+        
+        const res = await fetch(`${cleanUrl}/api/config`);
+        if (!res.ok) throw new Error("Falha ao conectar ao servidor backend.");
+        
+        const serverConfig = await res.json();
+        setConfig(serverConfig);
+        setLoadingConfig(false);
+        // notify("Conectado", "Configurações carregadas do servidor.", "success");
+    } catch (e: any) {
+        console.error(e);
+        notify("Erro de Conexão", `Não foi possível carregar as configurações do servidor (${BACKEND_URL}). Verifique se o Ngrok está rodando.`, "error");
+        setLoadingConfig(false);
+    }
+  };
+
+  useEffect(() => {
+      loadConfigFromServer();
+  }, []);
+
+  // Função para salvar configurações no servidor (chamada pelo Modal)
+  const handleSaveConfig = async (newConfig: AppConfig) => {
+      try {
+        const cleanUrl = BACKEND_URL.replace(/\/$/, "");
+        const res = await fetch(`${cleanUrl}/api/config`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-User-Email': userProfile?.email || '' // Autenticação simples via Header
+            },
+            body: JSON.stringify(newConfig)
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            throw new Error(data.message || "Erro ao salvar");
+        }
+
+        setConfig(newConfig); // Atualiza localmente para refletir UI
+        setIsConfigOpen(false);
+        notify("Configurações Salvas", "As alterações foram persistidas no servidor.", "success");
+      } catch (e: any) {
+          notify("Erro ao Salvar", e.message, "error");
+      }
+  };
+
+
+  // --- MAP FILES ---
   const mapFilesToActiveProfile = useCallback(() => {
+      if (!config.activeProfileId) return;
+      
       const currentProfileId = config.activeProfileId;
       const rawData = rawDriveFiles; 
       const watchedList = watchedFilesMap[currentProfileId] || [];
@@ -155,25 +183,15 @@ const App: React.FC = () => {
 
   useEffect(() => { mapFilesToActiveProfile(); }, [mapFilesToActiveProfile]);
 
+  // --- ACTIONS ---
   const toggleFileWatch = (fileId: string) => {
       const profileId = config.activeProfileId;
-      const currentlyWatched = (watchedFilesMap[profileId] || []).includes(fileId);
-      
-      const action = () => {
-          setWatchedFilesMap(prev => {
-              const currentList = prev[profileId] || [];
-              const exists = currentList.includes(fileId);
-              const newList = exists ? currentList.filter(id => id !== fileId) : [...currentList, fileId];
-              return { ...prev, [profileId]: newList };
-          });
-          if (!currentlyWatched) notify("Monitoramento Ativo", "O arquivo será sincronizado automaticamente.", "success");
-      };
-
-      if (!currentlyWatched) {
-          action();
-      } else {
-          action();
-      }
+      setWatchedFilesMap(prev => {
+          const currentList = prev[profileId] || [];
+          const exists = currentList.includes(fileId);
+          const newList = exists ? currentList.filter(id => id !== fileId) : [...currentList, fileId];
+          return { ...prev, [profileId]: newList };
+      });
   };
 
   const handleProfileChange = (profileId: string) => {
@@ -184,6 +202,9 @@ const App: React.FC = () => {
 
   // --- GOOGLE AUTH ---
   useEffect(() => {
+    // Só inicializa Google se tivermos a config do servidor
+    if (loadingConfig || !config.googleClientId) return;
+
     const initGoogle = async () => {
         if (typeof window.gapi === 'undefined' || typeof window.google === 'undefined') return;
         
@@ -206,12 +227,8 @@ const App: React.FC = () => {
                             return;
                         }
                         setAccessToken(resp.access_token);
-                        // Configura token no gapi
                         if (window.gapi.client) window.gapi.client.setToken(resp);
-                        
-                        // Busca Perfil do Usuário
                         await fetchUserProfile(resp.access_token);
-
                         setIsConnected(true);
                         notify("Conectado", "Acesso ao Google Drive autorizado.", "success");
                     },
@@ -221,7 +238,7 @@ const App: React.FC = () => {
         } catch (e) { console.error(e); }
     };
     initGoogle();
-  }, [config.googleClientId, config.googleApiKey, gapiInited, tokenClient]);
+  }, [config, loadingConfig, gapiInited, tokenClient]);
 
   const fetchUserProfile = async (token: string) => {
       try {
@@ -234,9 +251,8 @@ const App: React.FC = () => {
   };
 
   const handleConnectDrive = () => {
-    if (!config.googleClientId || !config.googleApiKey) { 
-        notify("Configuração Pendente", "Adicione as chaves de API do Google nas configurações.", "warning");
-        setIsConfigOpen(true); 
+    if (!config.googleClientId) { 
+        notify("Aguardando Configuração", "O sistema ainda não recebeu as configurações do servidor.", "warning");
         return; 
     }
     if (tokenClient) tokenClient.requestAccessToken({ prompt: 'consent' });
@@ -246,7 +262,7 @@ const App: React.FC = () => {
       setConfirmModal({
           isOpen: true,
           title: "Desconectar Conta",
-          message: "Isso removerá o acesso ao Drive e parará a sincronização automática. Deseja continuar?",
+          message: "Deseja desconectar sua conta do Google Drive?",
           isDestructive: true,
           action: () => {
               const token = window.gapi.client.getToken();
@@ -257,7 +273,7 @@ const App: React.FC = () => {
                       setUserProfile(null);
                       setIsConnected(false);
                       setRawDriveFiles([]);
-                      notify("Desconectado", "Conta Google removida com sucesso.", "info");
+                      notify("Desconectado", "Conta removida.", "info");
                   });
               }
           }
@@ -266,14 +282,12 @@ const App: React.FC = () => {
 
   const fetchDriveFiles = async (queryTerm: string = '') => {
     if (!gapiInited || !isConnected) return;
-
     try {
         let query = "trashed = false and (mimeType = 'application/vnd.google-apps.document' or mimeType = 'application/pdf' or mimeType = 'text/plain' or mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')";
         if (queryTerm) {
             query += ` and name contains '${queryTerm.replace(/'/g, "\\'")}'`;
             notify("Buscando...", `Procurando por "${queryTerm}"`, "info");
         }
-
         const response = await window.gapi.client.drive.files.list({
             'pageSize': 50,
             'fields': 'files(id, name, mimeType, modifiedTime, webViewLink)',
@@ -281,7 +295,6 @@ const App: React.FC = () => {
             'supportsAllDrives': true,
             'includeItemsFromAllDrives': true
         });
-
         const dFiles = response.result.files;
         if (dFiles) {
             setRawDriveFiles(dFiles); 
@@ -308,15 +321,10 @@ const App: React.FC = () => {
   const processSync = async (file: DocFile, targetProfile?: DifyProfile) => {
       const profile = targetProfile || config.profiles.find(p => p.id === config.activeProfileId);
       if (!profile) return;
-
       const isCurrentView = profile.id === config.activeProfileId;
-
       try {
-            if (isCurrentView) {
-                setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'sincronizando' } : f));
-            }
+            if (isCurrentView) setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'sincronizando' } : f));
             
-            // Fetch Content
             let content = '';
             if (file.mimeType.includes('google-apps')) {
                 const resp = await window.gapi.client.drive.files.export({ fileId: file.id, mimeType: 'text/plain' });
@@ -341,38 +349,32 @@ ${content}`;
                     ...prev,
                     [profile.id]: { ...(prev[profile.id] || {}), [file.id]: now }
                 }));
-                if (isCurrentView) notify("Sucesso", `${file.name} sincronizado com ${profile.name}.`, "success");
+                if (isCurrentView) notify("Sucesso", `${file.name} sincronizado.`, "success");
             } else {
                 throw new Error(result.message);
             }
         } catch (err: any) {
-            if (err.status === 401) {
-                notify("Sessão Inválida", "Não foi possível baixar o arquivo.", "error");
-                setIsConnected(false);
-            } else {
-                notify("Erro Sync", `Falha em ${file.name}: ${err.message}`, "error");
-                if (isCurrentView) setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'erro' } : f));
-            }
+            notify("Erro Sync", `Falha em ${file.name}: ${err.message}`, "error");
+            if (isCurrentView) setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'erro' } : f));
         }
   };
 
   const handleSyncAll = () => {
       const candidates = files.filter(f => f.watched && (f.status === 'pendente' || f.status === 'erro'));
       if (candidates.length === 0) {
-          notify("Tudo em dia", "Nenhum arquivo pendente para sincronizar.", "info");
+          notify("Tudo em dia", "Nenhum arquivo pendente.", "info");
           return;
       }
-
       setConfirmModal({
           isOpen: true,
           title: "Sincronizar Tudo",
-          message: `Deseja enviar ${candidates.length} arquivos pendentes para o agente "${config.profiles.find(p => p.id === config.activeProfileId)?.name}"?`,
+          message: `Enviar ${candidates.length} arquivos para "${config.profiles.find(p => p.id === config.activeProfileId)?.name}"?`,
           action: () => {
               setIsSyncing(true);
               (async () => {
                   for (const f of candidates) await processSync(f);
                   setIsSyncing(false);
-                  notify("Processo Finalizado", "Fila de sincronização concluída.", "success");
+                  notify("Finalizado", "Sincronização em massa concluída.", "success");
               })();
           }
       });
@@ -381,11 +383,10 @@ ${content}`;
   // --- AUTO SYNC ---
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
-    if (config.autoSync && isConnected) {
+    if (config.autoSync && isConnected && !loadingConfig) {
         interval = setInterval(async () => {
             if (isSyncingRef.current) return;
             try {
-                // Snapshot silencioso
                 const response = await window.gapi.client.drive.files.list({
                     'pageSize': 100,
                     'fields': 'files(id, name, mimeType, modifiedTime)',
@@ -394,7 +395,6 @@ ${content}`;
                 const driveFiles = response.result.files as any[];
                 if (!driveFiles) return;
                 
-                // Itera Perfis
                 for (const profile of configRef.current.profiles) {
                     const watchedIds = watchedMapRef.current[profile.id] || [];
                     const history = historyMapRef.current[profile.id] || {};
@@ -408,7 +408,7 @@ ${content}`;
                     });
 
                     if (pendingFiles.length > 0) {
-                        notify("Auto-Sync Iniciado", `${pendingFiles.length} arquivos alterados detectados.`, "info");
+                        notify("Auto-Sync", `${pendingFiles.length} arquivos detectados.`, "info");
                         setIsSyncing(true);
                         for (const rawFile of pendingFiles) {
                             await processSync({
@@ -425,7 +425,21 @@ ${content}`;
         }, config.syncInterval * 60 * 1000);
     }
     return () => clearInterval(interval);
-  }, [config.autoSync, config.syncInterval, isConnected]);
+  }, [config.autoSync, config.syncInterval, isConnected, loadingConfig]);
+
+  if (loadingConfig) {
+      return (
+          <div className="min-h-screen flex items-center justify-center bg-slate-50">
+              <div className="text-center animate-pulse">
+                  <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                     <i className="fas fa-satellite-dish text-indigo-500 text-2xl"></i>
+                  </div>
+                  <h2 className="text-xl font-bold text-slate-700">Conectando ao Backend...</h2>
+                  <p className="text-slate-400 text-sm mt-2">{BACKEND_URL}</p>
+              </div>
+          </div>
+      );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 font-sans text-slate-800">
@@ -458,13 +472,12 @@ ${content}`;
         />
       </main>
 
-      {/* Overlays */}
       <ConfigModal 
         isOpen={isConfigOpen}
         onClose={() => setIsConfigOpen(false)}
         config={config}
         user={userProfile}
-        onSave={(newConfig) => { setConfig(newConfig); setIsConfigOpen(false); notify("Configurações Salvas", "O sistema foi atualizado.", "success"); }}
+        onSave={handleSaveConfig}
       />
       
       <ConfirmationModal
