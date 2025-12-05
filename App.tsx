@@ -18,10 +18,9 @@ declare global {
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
 const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
 const STORAGE_KEY_WATCHED_MAP = 'docsync_watched_files_map';
-const STORAGE_KEY_SYNC_HISTORY_MAP = 'docsync_sync_history_map';
 
 const App: React.FC = () => {
-  // --- CONFIGURAÇÃO ---
+  // --- STATE ---
   const [config, setConfig] = useState<AppConfig>({
       googleClientId: '',
       googleApiKey: '',
@@ -31,20 +30,16 @@ const App: React.FC = () => {
       syncInterval: 5
   });
   const [loadingConfig, setLoadingConfig] = useState(true);
-
-  // User State
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
-  // Mapas de persistência
+  // Persistence
   const [watchedFilesMap, setWatchedFilesMap] = useState<Record<string, string[]>>(() => {
       const saved = localStorage.getItem(STORAGE_KEY_WATCHED_MAP);
       return saved ? JSON.parse(saved) : {};
   });
   
-  const [syncHistoryMap, setSyncHistoryMap] = useState<Record<string, Record<string, string>>>(() => {
-      const saved = localStorage.getItem(STORAGE_KEY_SYNC_HISTORY_MAP);
-      return saved ? JSON.parse(saved) : {};
-  });
+  // Agora o histórico inicia vazio e é carregado do backend
+  const [syncHistoryMap, setSyncHistoryMap] = useState<Record<string, Record<string, string>>>({});
 
   const [rawDriveFiles, setRawDriveFiles] = useState<any[]>([]); 
   const [files, setFiles] = useState<DocFile[]>([]); 
@@ -69,10 +64,18 @@ const App: React.FC = () => {
   const historyMapRef = useRef(syncHistoryMap);
   const isSyncingRef = useRef(isSyncing);
 
-  // --- EFEITOS DE PERSISTÊNCIA LOCAL ---
+  // --- REFS & LOCALSTORAGE ---
   useEffect(() => { configRef.current = config; }, [config]);
-  useEffect(() => { watchedMapRef.current = watchedFilesMap; localStorage.setItem(STORAGE_KEY_WATCHED_MAP, JSON.stringify(watchedFilesMap)); }, [watchedFilesMap]);
-  useEffect(() => { historyMapRef.current = syncHistoryMap; localStorage.setItem(STORAGE_KEY_SYNC_HISTORY_MAP, JSON.stringify(syncHistoryMap)); }, [syncHistoryMap]);
+  useEffect(() => { 
+      watchedMapRef.current = watchedFilesMap; 
+      localStorage.setItem(STORAGE_KEY_WATCHED_MAP, JSON.stringify(watchedFilesMap)); 
+  }, [watchedFilesMap]);
+  
+  useEffect(() => { 
+      historyMapRef.current = syncHistoryMap;
+      // Não salvamos mais no localStorage o histórico, pois salvamos no backend a cada sucesso
+  }, [syncHistoryMap]);
+  
   useEffect(() => { isSyncingRef.current = isSyncing; }, [isSyncing]);
 
   const notify = (title: string, message: string, type: Notification['type'] = 'info') => {
@@ -81,52 +84,75 @@ const App: React.FC = () => {
   };
   const removeNotification = (id: string) => setNotifications(prev => prev.filter(n => n.id !== id));
 
-  // --- CARREGAR CONFIG DO SERVIDOR ---
-  const loadConfigFromServer = async () => {
+  // --- HELPERS DE API ---
+  const getBackendUrl = () => {
+    let url = BACKEND_URL.replace(/\/$/, "");
+    if ((!url || url.includes("SEU-LINK")) && window.location.hostname === 'localhost') {
+        return 'http://localhost:3000';
+    }
+    return url;
+  };
+
+  // --- INITIAL LOAD (Config & History) ---
+  const loadInitialData = async () => {
     try {
-        let cleanUrl = BACKEND_URL.replace(/\/$/, "");
+        const url = getBackendUrl();
         
-        if (!cleanUrl || cleanUrl.includes("SEU-LINK")) {
-            if (window.location.hostname === 'localhost') {
-                cleanUrl = 'http://localhost:3000';
-            } else {
-                throw new Error("URL do Backend não configurada.");
-            }
-        }
-        
-        const res = await fetch(`${cleanUrl}/api/config`, {
-            headers: {
-                "ngrok-skip-browser-warning": "true",
-                "Content-Type": "application/json"
-            }
+        // 1. Carrega Config
+        const resConfig = await fetch(`${url}/api/config`, {
+            headers: { "ngrok-skip-browser-warning": "true" }
         });
+        if (!resConfig.ok) throw new Error("Falha na conexão com Backend");
+        const serverConfig = await resConfig.json();
+        setConfig(serverConfig);
 
-        const contentType = res.headers.get("content-type");
-        if (contentType && contentType.indexOf("application/json") === -1) {
-             throw new Error(`O servidor retornou HTML.`);
+        // 2. Carrega Histórico Persistente
+        try {
+            const resHistory = await fetch(`${url}/api/history`, {
+                headers: { "ngrok-skip-browser-warning": "true" }
+            });
+            if (resHistory.ok) {
+                const historyData = await resHistory.json();
+                setSyncHistoryMap(historyData || {});
+            }
+        } catch (hErr) {
+            console.warn("Não foi possível carregar histórico do servidor.", hErr);
         }
 
-        if (!res.ok) throw new Error("Falha ao conectar ao servidor backend.");
-        
-        const serverConfig = await res.json();
-        setConfig(serverConfig);
         setLoadingConfig(false);
     } catch (e: any) {
         console.error(e);
-        notify("Erro de Conexão", `Backend offline ou incorreto.`, "error");
+        notify("Erro Crítico", `Backend indisponível: ${e.message}`, "error");
         setLoadingConfig(false);
     }
   };
 
   useEffect(() => {
-      loadConfigFromServer();
+      loadInitialData();
   }, []);
 
-  // Função para salvar configurações no servidor (chamada pelo Modal)
+  // --- SAVE HISTORY TO SERVER ---
+  const saveHistoryToServer = async (newHistory: any) => {
+      try {
+          const url = getBackendUrl();
+          await fetch(`${url}/api/history`, {
+              method: 'POST',
+              headers: { 
+                  'Content-Type': 'application/json',
+                  "ngrok-skip-browser-warning": "true"
+              },
+              body: JSON.stringify(newHistory)
+          });
+      } catch (e) {
+          console.error("Erro ao salvar histórico no backend:", e);
+      }
+  };
+
+  // --- SAVE CONFIG ---
   const handleSaveConfig = async (newConfig: AppConfig) => {
       try {
-        const cleanUrl = BACKEND_URL.replace(/\/$/, "");
-        const res = await fetch(`${cleanUrl}/api/config`, {
+        const url = getBackendUrl();
+        const res = await fetch(`${url}/api/config`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -136,22 +162,16 @@ const App: React.FC = () => {
             body: JSON.stringify(newConfig)
         });
 
-        const data = await res.json();
-
-        if (!res.ok) {
-            throw new Error(data.message || "Erro ao salvar");
-        }
-
+        if (!res.ok) throw new Error("Erro ao salvar");
         setConfig(newConfig); 
         setIsConfigOpen(false);
-        notify("Configurações Salvas", "Servidor atualizado.", "success");
+        notify("Salvo", "Configurações atualizadas.", "success");
       } catch (e: any) {
-          notify("Erro ao Salvar", e.message, "error");
+          notify("Erro", e.message, "error");
       }
   };
 
-
-  // --- MAP FILES ---
+  // --- FILE MAPPING ---
   const mapFilesToActiveProfile = useCallback(() => {
       if (!config.activeProfileId) return;
       
@@ -186,6 +206,7 @@ const App: React.FC = () => {
           } as DocFile;
       });
 
+      // Sort: Pendentes primeiro, depois recent
       mapped.sort((a, b) => {
           if (a.watched !== b.watched) return a.watched ? -1 : 1;
           if (a.status === 'pendente' && b.status !== 'pendente') return -1;
@@ -210,14 +231,11 @@ const App: React.FC = () => {
   };
 
   const handleProfileChange = (profileId: string) => {
-      const profileName = config.profiles.find(p => p.id === profileId)?.name;
-      notify("Agente Alternado", `Agora gerenciando: ${profileName}`, 'info');
       setConfig(prev => ({ ...prev, activeProfileId: profileId }));
   };
 
-  // --- GOOGLE AUTH ---
+  // --- GOOGLE ---
   useEffect(() => {
-    // Só inicializa Google se tivermos a config do servidor
     if (loadingConfig || !config.googleClientId) return;
 
     const initGoogle = async () => {
@@ -238,14 +256,14 @@ const App: React.FC = () => {
                     scope: SCOPES,
                     callback: async (resp: any) => {
                         if (resp.error) {
-                            notify("Erro Autenticação", resp.error, "error");
+                            notify("Erro Login", "Falha na autenticação Google", "error");
                             return;
                         }
                         setAccessToken(resp.access_token);
                         if (window.gapi.client) window.gapi.client.setToken(resp);
                         await fetchUserProfile(resp.access_token);
                         setIsConnected(true);
-                        notify("Conectado", "Acesso ao Google Drive autorizado.", "success");
+                        notify("Conectado", "Acesso ao Drive liberado.", "success");
                     },
                 });
                 setTokenClient(client);
@@ -260,14 +278,12 @@ const App: React.FC = () => {
           const res = await fetch(`https://www.googleapis.com/oauth2/v1/userinfo?alt=json&access_token=${token}`);
           const data = await res.json();
           setUserProfile({ name: data.name, email: data.email, picture: data.picture });
-      } catch (e) {
-          console.error("Falha ao buscar perfil", e);
-      }
+      } catch (e) {}
   };
 
   const handleConnectDrive = () => {
     if (!config.googleClientId) { 
-        notify("Erro de Sistema", "O servidor não foi configurado corretamente. Client ID ausente.", "error");
+        notify("Configuração", "Aguardando configuração do servidor...", "warning");
         return; 
     }
     if (tokenClient) tokenClient.requestAccessToken({ prompt: 'consent' });
@@ -276,8 +292,8 @@ const App: React.FC = () => {
   const handleDisconnect = () => {
       setConfirmModal({
           isOpen: true,
-          title: "Desconectar Conta",
-          message: "Deseja desconectar sua conta do Google Drive?",
+          title: "Desconectar",
+          message: "Sair da conta Google?",
           isDestructive: true,
           action: () => {
               const token = window.gapi.client.getToken();
@@ -288,7 +304,6 @@ const App: React.FC = () => {
                       setUserProfile(null);
                       setIsConnected(false);
                       setRawDriveFiles([]);
-                      notify("Desconectado", "Conta removida.", "info");
                   });
               }
           }
@@ -301,10 +316,10 @@ const App: React.FC = () => {
         let query = "trashed = false and (mimeType = 'application/vnd.google-apps.document' or mimeType = 'application/pdf' or mimeType = 'text/plain' or mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')";
         if (queryTerm) {
             query += ` and name contains '${queryTerm.replace(/'/g, "\\'")}'`;
-            notify("Buscando...", `Procurando por "${queryTerm}"`, "info");
+            notify("Buscando", `Filtrando por "${queryTerm}"...`, "info");
         }
         const response = await window.gapi.client.drive.files.list({
-            'pageSize': 50,
+            'pageSize': 60,
             'fields': 'files(id, name, mimeType, modifiedTime, webViewLink)',
             'q': query,
             'supportsAllDrives': true,
@@ -313,26 +328,24 @@ const App: React.FC = () => {
         const dFiles = response.result.files;
         if (dFiles) {
             setRawDriveFiles(dFiles); 
-            if (queryTerm) notify("Busca Concluída", `${dFiles.length} arquivos encontrados.`, "success");
+            if(queryTerm) notify("Pronto", `${dFiles.length} arquivos encontrados.`, "success");
         }
     } catch (err: any) {
-        if (err.status === 401 || (err.result?.error?.code === 401)) {
-            notify("Sessão Expirada", "Reconecte sua conta Google.", "error");
+        if (err.status === 401) {
+            notify("Sessão Expirada", "Reconecte o Drive.", "error");
             setIsConnected(false);
-        } else {
-            notify("Erro no Drive", "Falha ao listar arquivos.", "error");
         }
     }
   };
 
   useEffect(() => {
       if (isConnected && gapiInited) {
-          const t = setTimeout(() => fetchDriveFiles(), 500);
+          const t = setTimeout(() => fetchDriveFiles(), 800);
           return () => clearTimeout(t);
       }
   }, [isConnected, gapiInited]);
 
-  // --- SYNC ---
+  // --- SYNC LOGIC ---
   const processSync = async (file: DocFile, targetProfile?: DifyProfile) => {
       const profile = targetProfile || config.profiles.find(p => p.id === config.activeProfileId);
       if (!profile) return;
@@ -352,7 +365,7 @@ const App: React.FC = () => {
             const enhancedContent = `---
 Arquivo: ${file.name}
 Data Mod: ${file.modifiedTime}
-Link Drive: ${file.webViewLink || 'N/A'}
+Link: ${file.webViewLink || 'N/A'}
 ---
 ${content}`;
 
@@ -360,16 +373,23 @@ ${content}`;
             
             if (result.success) {
                 const now = new Date().toISOString();
-                setSyncHistoryMap(prev => ({
-                    ...prev,
-                    [profile.id]: { ...(prev[profile.id] || {}), [file.id]: now }
-                }));
-                if (isCurrentView) notify("Sucesso", `${file.name} sincronizado.`, "success");
+                
+                // Update State and Server
+                setSyncHistoryMap(prev => {
+                    const newState = {
+                        ...prev,
+                        [profile.id]: { ...(prev[profile.id] || {}), [file.id]: now }
+                    };
+                    saveHistoryToServer(newState); // Save to Backend
+                    return newState;
+                });
+
+                if (isCurrentView) notify("Sync OK", `${file.name}`, "success");
             } else {
                 throw new Error(result.message);
             }
         } catch (err: any) {
-            notify("Erro Sync", `Falha em ${file.name}: ${err.message}`, "error");
+            notify("Falha Sync", `${file.name}: ${err.message}`, "error");
             if (isCurrentView) setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'erro' } : f));
         }
   };
@@ -377,19 +397,19 @@ ${content}`;
   const handleSyncAll = () => {
       const candidates = files.filter(f => f.watched && (f.status === 'pendente' || f.status === 'erro'));
       if (candidates.length === 0) {
-          notify("Tudo em dia", "Nenhum arquivo pendente.", "info");
+          notify("Info", "Nada pendente para sincronizar.", "info");
           return;
       }
       setConfirmModal({
           isOpen: true,
-          title: "Sincronizar Tudo",
-          message: `Enviar ${candidates.length} arquivos para "${config.profiles.find(p => p.id === config.activeProfileId)?.name}"?`,
+          title: "Sincronizar em Massa",
+          message: `Processar ${candidates.length} arquivos agora?`,
           action: () => {
               setIsSyncing(true);
               (async () => {
                   for (const f of candidates) await processSync(f);
                   setIsSyncing(false);
-                  notify("Finalizado", "Sincronização em massa concluída.", "success");
+                  notify("Concluído", "Processo finalizado.", "success");
               })();
           }
       });
@@ -402,6 +422,7 @@ ${content}`;
         interval = setInterval(async () => {
             if (isSyncingRef.current) return;
             try {
+                // Background check without notifying unless action is taken
                 const response = await window.gapi.client.drive.files.list({
                     'pageSize': 100,
                     'fields': 'files(id, name, mimeType, modifiedTime)',
@@ -423,7 +444,7 @@ ${content}`;
                     });
 
                     if (pendingFiles.length > 0) {
-                        notify("Auto-Sync", `${pendingFiles.length} arquivos detectados.`, "info");
+                        notify("Auto-Sync", `Processando ${pendingFiles.length} arquivos...`, "info");
                         setIsSyncing(true);
                         for (const rawFile of pendingFiles) {
                             await processSync({
@@ -444,10 +465,10 @@ ${content}`;
 
   if (loadingConfig) {
       return (
-          <div className="min-h-screen flex items-center justify-center bg-slate-50">
+          <div className="min-h-screen flex items-center justify-center bg-slate-100">
               <div className="text-center">
-                  <div className="w-12 h-12 border-4 border-slate-900 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                  <h2 className="text-lg font-bold text-slate-800">Conectando...</h2>
+                  <div className="w-10 h-10 border-4 border-slate-800 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                  <h2 className="text-sm font-bold text-slate-600 uppercase tracking-wide">Inicializando Sistema...</h2>
               </div>
           </div>
       );
@@ -455,30 +476,30 @@ ${content}`;
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-100 font-sans text-slate-900">
-      {/* HEADER PROFISSIONAL (ESCURO) */}
-      <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-30 shadow-md">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+      <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-30 shadow-md h-16 flex-shrink-0">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 h-full flex items-center justify-between">
             <div className="flex items-center gap-3">
-                <div className="bg-emerald-500 w-8 h-8 rounded flex items-center justify-center">
-                    <i className="fas fa-sync text-slate-900 text-sm"></i>
+                <div className="bg-indigo-600 w-8 h-8 rounded-md flex items-center justify-center shadow-lg shadow-indigo-500/30">
+                    <i className="fas fa-network-wired text-white text-xs"></i>
                 </div>
-                <h1 className="text-lg font-bold tracking-tight">TradeSync <span className="text-slate-500 text-xs font-normal ml-2">v2.0 Enterprise</span></h1>
+                <div>
+                    <h1 className="text-base font-bold tracking-tight leading-none">TradeSync Enterprise</h1>
+                    <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-0.5">Dify Knowledge Connector</div>
+                </div>
             </div>
             
-            {/* User Profile Mini (Header) */}
             {isConnected && userProfile && (
-                <div className="flex items-center gap-4">
-                     <div className="text-right hidden md:block">
-                        <div className="text-sm font-medium text-slate-200">{userProfile.name}</div>
-                        <div className="text-xs text-slate-500">{userProfile.email}</div>
+                <div className="flex items-center gap-3 bg-slate-800 py-1 pl-3 pr-1 rounded-full border border-slate-700">
+                     <div className="text-right hidden sm:block">
+                        <div className="text-xs font-semibold text-slate-200">{userProfile.name}</div>
                      </div>
-                     <img src={userProfile.picture} alt="" className="w-9 h-9 rounded bg-slate-700 object-cover border border-slate-700" />
+                     <img src={userProfile.picture} alt="" className="w-7 h-7 rounded-full bg-slate-700 object-cover" />
                 </div>
             )}
         </div>
       </header>
 
-      <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-6">
+      <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-6 overflow-hidden flex flex-col">
         <Dashboard 
             files={files}
             config={config}
