@@ -20,7 +20,6 @@ const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/res
 const STORAGE_KEY_WATCHED_MAP = 'docsync_watched_files_map';
 
 const App: React.FC = () => {
-  // --- STATE ---
   const [config, setConfig] = useState<AppConfig>({
       googleClientId: '',
       googleApiKey: '',
@@ -32,15 +31,12 @@ const App: React.FC = () => {
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
-  // Persistence
   const [watchedFilesMap, setWatchedFilesMap] = useState<Record<string, string[]>>(() => {
       const saved = localStorage.getItem(STORAGE_KEY_WATCHED_MAP);
       return saved ? JSON.parse(saved) : {};
   });
   
-  // Agora o histórico inicia vazio e é carregado do backend
   const [syncHistoryMap, setSyncHistoryMap] = useState<Record<string, Record<string, string>>>({});
-
   const [rawDriveFiles, setRawDriveFiles] = useState<any[]>([]); 
   const [files, setFiles] = useState<DocFile[]>([]); 
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -64,7 +60,6 @@ const App: React.FC = () => {
   const historyMapRef = useRef(syncHistoryMap);
   const isSyncingRef = useRef(isSyncing);
 
-  // --- REFS & LOCALSTORAGE ---
   useEffect(() => { configRef.current = config; }, [config]);
   useEffect(() => { 
       watchedMapRef.current = watchedFilesMap; 
@@ -73,7 +68,6 @@ const App: React.FC = () => {
   
   useEffect(() => { 
       historyMapRef.current = syncHistoryMap;
-      // Não salvamos mais no localStorage o histórico, pois salvamos no backend a cada sucesso
   }, [syncHistoryMap]);
   
   useEffect(() => { isSyncingRef.current = isSyncing; }, [isSyncing]);
@@ -84,7 +78,6 @@ const App: React.FC = () => {
   };
   const removeNotification = (id: string) => setNotifications(prev => prev.filter(n => n.id !== id));
 
-  // --- HELPERS DE API ---
   const getBackendUrl = () => {
     let url = BACKEND_URL.replace(/\/$/, "");
     if ((!url || url.includes("SEU-LINK")) && window.location.hostname === 'localhost') {
@@ -93,12 +86,9 @@ const App: React.FC = () => {
     return url;
   };
 
-  // --- INITIAL LOAD (Config & History) ---
   const loadInitialData = async () => {
     try {
         const url = getBackendUrl();
-        
-        // 1. Carrega Config
         const resConfig = await fetch(`${url}/api/config`, {
             headers: { "ngrok-skip-browser-warning": "true" }
         });
@@ -106,7 +96,6 @@ const App: React.FC = () => {
         const serverConfig = await resConfig.json();
         setConfig(serverConfig);
 
-        // 2. Carrega Histórico Persistente
         try {
             const resHistory = await fetch(`${url}/api/history`, {
                 headers: { "ngrok-skip-browser-warning": "true" }
@@ -115,14 +104,11 @@ const App: React.FC = () => {
                 const historyData = await resHistory.json();
                 setSyncHistoryMap(historyData || {});
             }
-        } catch (hErr) {
-            console.warn("Não foi possível carregar histórico do servidor.", hErr);
-        }
+        } catch (hErr) {}
 
         setLoadingConfig(false);
     } catch (e: any) {
-        console.error(e);
-        notify("Erro Crítico", `Backend indisponível: ${e.message}`, "error");
+        notify("Erro Crítico", `Backend offline: ${e.message}`, "error");
         setLoadingConfig(false);
     }
   };
@@ -131,7 +117,6 @@ const App: React.FC = () => {
       loadInitialData();
   }, []);
 
-  // --- SAVE HISTORY TO SERVER ---
   const saveHistoryToServer = async (newHistory: any) => {
       try {
           const url = getBackendUrl();
@@ -143,12 +128,9 @@ const App: React.FC = () => {
               },
               body: JSON.stringify(newHistory)
           });
-      } catch (e) {
-          console.error("Erro ao salvar histórico no backend:", e);
-      }
+      } catch (e) { console.error(e); }
   };
 
-  // --- SAVE CONFIG ---
   const handleSaveConfig = async (newConfig: AppConfig) => {
       try {
         const url = getBackendUrl();
@@ -171,10 +153,8 @@ const App: React.FC = () => {
       }
   };
 
-  // --- FILE MAPPING ---
   const mapFilesToActiveProfile = useCallback(() => {
       if (!config.activeProfileId) return;
-      
       const currentProfileId = config.activeProfileId;
       const rawData = rawDriveFiles; 
       const watchedList = watchedFilesMap[currentProfileId] || [];
@@ -206,7 +186,6 @@ const App: React.FC = () => {
           } as DocFile;
       });
 
-      // Sort: Pendentes primeiro, depois recent
       mapped.sort((a, b) => {
           if (a.watched !== b.watched) return a.watched ? -1 : 1;
           if (a.status === 'pendente' && b.status !== 'pendente') return -1;
@@ -219,7 +198,6 @@ const App: React.FC = () => {
 
   useEffect(() => { mapFilesToActiveProfile(); }, [mapFilesToActiveProfile]);
 
-  // --- ACTIONS ---
   const toggleFileWatch = (fileId: string) => {
       const profileId = config.activeProfileId;
       setWatchedFilesMap(prev => {
@@ -234,13 +212,10 @@ const App: React.FC = () => {
       setConfig(prev => ({ ...prev, activeProfileId: profileId }));
   };
 
-  // --- GOOGLE ---
   useEffect(() => {
     if (loadingConfig || !config.googleClientId) return;
-
     const initGoogle = async () => {
         if (typeof window.gapi === 'undefined' || typeof window.google === 'undefined') return;
-        
         try {
             if (!gapiInited) {
                 await new Promise<void>((resolve) => window.gapi.load('client', resolve));
@@ -249,21 +224,16 @@ const App: React.FC = () => {
                    setGapiInited(true);
                 }
             }
-
             if (!tokenClient && config.googleClientId) {
                 const client = window.google.accounts.oauth2.initTokenClient({
                     client_id: config.googleClientId,
                     scope: SCOPES,
                     callback: async (resp: any) => {
-                        if (resp.error) {
-                            notify("Erro Login", "Falha na autenticação Google", "error");
-                            return;
-                        }
+                        if (resp.error) return;
                         setAccessToken(resp.access_token);
                         if (window.gapi.client) window.gapi.client.setToken(resp);
                         await fetchUserProfile(resp.access_token);
                         setIsConnected(true);
-                        notify("Conectado", "Acesso ao Drive liberado.", "success");
                     },
                 });
                 setTokenClient(client);
@@ -282,10 +252,7 @@ const App: React.FC = () => {
   };
 
   const handleConnectDrive = () => {
-    if (!config.googleClientId) { 
-        notify("Configuração", "Aguardando configuração do servidor...", "warning");
-        return; 
-    }
+    if (!config.googleClientId) return;
     if (tokenClient) tokenClient.requestAccessToken({ prompt: 'consent' });
   };
 
@@ -332,7 +299,6 @@ const App: React.FC = () => {
         }
     } catch (err: any) {
         if (err.status === 401) {
-            notify("Sessão Expirada", "Reconecte o Drive.", "error");
             setIsConnected(false);
         }
     }
@@ -345,7 +311,6 @@ const App: React.FC = () => {
       }
   }, [isConnected, gapiInited]);
 
-  // --- SYNC LOGIC ---
   const processSync = async (file: DocFile, targetProfile?: DifyProfile) => {
       const profile = targetProfile || config.profiles.find(p => p.id === config.activeProfileId);
       if (!profile) return;
@@ -373,23 +338,20 @@ ${content}`;
             
             if (result.success) {
                 const now = new Date().toISOString();
-                
-                // Update State and Server
                 setSyncHistoryMap(prev => {
                     const newState = {
                         ...prev,
                         [profile.id]: { ...(prev[profile.id] || {}), [file.id]: now }
                     };
-                    saveHistoryToServer(newState); // Save to Backend
+                    saveHistoryToServer(newState);
                     return newState;
                 });
-
-                if (isCurrentView) notify("Sync OK", `${file.name}`, "success");
+                if (isCurrentView) notify("Sucesso", `${file.name} sincronizado.`, "success");
             } else {
                 throw new Error(result.message);
             }
         } catch (err: any) {
-            notify("Falha Sync", `${file.name}: ${err.message}`, "error");
+            notify("Erro Sync", `${file.name}: ${err.message}`, "error");
             if (isCurrentView) setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'erro' } : f));
         }
   };
@@ -415,14 +377,12 @@ ${content}`;
       });
   };
 
-  // --- AUTO SYNC ---
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
     if (config.autoSync && isConnected && !loadingConfig) {
         interval = setInterval(async () => {
             if (isSyncingRef.current) return;
             try {
-                // Background check without notifying unless action is taken
                 const response = await window.gapi.client.drive.files.list({
                     'pageSize': 100,
                     'fields': 'files(id, name, mimeType, modifiedTime)',
@@ -444,7 +404,7 @@ ${content}`;
                     });
 
                     if (pendingFiles.length > 0) {
-                        notify("Auto-Sync", `Processando ${pendingFiles.length} arquivos...`, "info");
+                        notify("Auto-Sync", `Sincronizando ${pendingFiles.length} arquivos...`, "info");
                         setIsSyncing(true);
                         for (const rawFile of pendingFiles) {
                             await processSync({
@@ -465,35 +425,34 @@ ${content}`;
 
   if (loadingConfig) {
       return (
-          <div className="min-h-screen flex items-center justify-center bg-slate-100">
-              <div className="text-center">
-                  <div className="w-10 h-10 border-4 border-slate-800 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                  <h2 className="text-sm font-bold text-slate-600 uppercase tracking-wide">Inicializando Sistema...</h2>
+          <div className="min-h-screen flex items-center justify-center bg-gray-50">
+              <div className="flex flex-col items-center">
+                  <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+                  <h2 className="text-sm font-medium text-gray-500">Iniciando TradeSync...</h2>
               </div>
           </div>
       );
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-100 font-sans text-slate-900">
-      <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-30 shadow-md h-16 flex-shrink-0">
+    <div className="min-h-screen flex flex-col bg-gray-50 font-sans text-gray-900">
+      {/* HEADER: Clean & Modern */}
+      <header className="bg-white border-b border-gray-200 sticky top-0 z-30 h-16 flex-shrink-0">
         <div className="max-w-7xl mx-auto px-4 md:px-6 h-full flex items-center justify-between">
             <div className="flex items-center gap-3">
-                <div className="bg-indigo-600 w-8 h-8 rounded-md flex items-center justify-center shadow-lg shadow-indigo-500/30">
-                    <i className="fas fa-network-wired text-white text-xs"></i>
+                <div className="bg-indigo-600 text-white w-8 h-8 rounded-lg flex items-center justify-center shadow-md shadow-indigo-200">
+                    <i className="fas fa-layer-group text-sm"></i>
                 </div>
-                <div>
-                    <h1 className="text-base font-bold tracking-tight leading-none">TradeSync Enterprise</h1>
-                    <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-0.5">Dify Knowledge Connector</div>
+                <div className="flex flex-col justify-center">
+                    <h1 className="text-sm font-bold text-gray-900 tracking-tight">TradeSync</h1>
+                    <span className="text-[10px] text-gray-500 font-medium">v2.2 Enterprise</span>
                 </div>
             </div>
             
             {isConnected && userProfile && (
-                <div className="flex items-center gap-3 bg-slate-800 py-1 pl-3 pr-1 rounded-full border border-slate-700">
-                     <div className="text-right hidden sm:block">
-                        <div className="text-xs font-semibold text-slate-200">{userProfile.name}</div>
-                     </div>
-                     <img src={userProfile.picture} alt="" className="w-7 h-7 rounded-full bg-slate-700 object-cover" />
+                <div className="flex items-center gap-3">
+                     <span className="text-xs text-gray-500 hidden sm:block">Logado como <strong className="text-gray-900">{userProfile.name}</strong></span>
+                     <img src={userProfile.picture} alt="" className="w-8 h-8 rounded-full border border-gray-200 shadow-sm" />
                 </div>
             )}
         </div>
