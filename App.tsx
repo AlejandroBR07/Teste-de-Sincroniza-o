@@ -119,9 +119,10 @@ const App: React.FC = () => {
         setConfig(serverConfig);
         setLoadingConfig(false);
         
-        // Se a config veio vazia (primeiro uso), avisa
+        // Se a config veio vazia (primeiro uso), abre a janela de configuração automaticamente
         if (!serverConfig.googleClientId) {
-             notify("Primeiro Acesso", "Backend conectado! Configure o sistema no menu de engrenagem.", "info");
+             notify("Configuração Inicial", "Por favor, configure as chaves do Google Cloud.", "info");
+             setIsConfigOpen(true);
         }
     } catch (e: any) {
         console.error(e);
@@ -142,7 +143,7 @@ const App: React.FC = () => {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-User-Email': userProfile?.email || '', // Autenticação simples via Header
+                'X-User-Email': userProfile?.email || '', // No setup inicial, isso pode ir vazio
                 "ngrok-skip-browser-warning": "true"
             },
             body: JSON.stringify(newConfig)
@@ -156,7 +157,7 @@ const App: React.FC = () => {
 
         setConfig(newConfig); // Atualiza localmente para refletir UI
         setIsConfigOpen(false);
-        notify("Configurações Salvas", "As alterações foram persistidas no servidor.", "success");
+        notify("Configurações Salvas", "Servidor atualizado! Agora você pode conectar.", "success");
       } catch (e: any) {
           notify("Erro ao Salvar", e.message, "error");
       }
@@ -278,8 +279,10 @@ const App: React.FC = () => {
   };
 
   const handleConnectDrive = () => {
+    // MODIFICADO: Se não tiver config, abre o modal e avisa o usuário
     if (!config.googleClientId) { 
-        notify("Aguardando Configuração", "O sistema ainda não recebeu as configurações do servidor.", "warning");
+        notify("Configuração Necessária", "Insira o Client ID do Google no menu de engrenagem para continuar.", "warning");
+        setIsConfigOpen(true);
         return; 
     }
     if (tokenClient) tokenClient.requestAccessToken({ prompt: 'consent' });
