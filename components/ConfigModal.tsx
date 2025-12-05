@@ -16,29 +16,31 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'agents' | 'google' | 'general'>('agents');
 
-  // Verificação de Segurança
+  // Adiciona a propriedade difyApiKey na interface do frontend, mesmo que ela venha vazia do server
+  // Precisamos disso para permitir que o admin insira uma nova chave
+  
+  // Verificação de Segurança (UI only, o server valida de verdade)
   const userEmail = user?.email || '';
   const isAdmin = ALLOWED_ADMINS.includes(userEmail);
-  
-  // MODO SETUP: Se não tem Client ID configurado, libera o acesso para configurar
-  const isSetupMode = !config.googleClientId || !config.googleApiKey;
+  const isSetupMode = !config.googleClientId;
 
   useEffect(() => {
-    setLocalConfig(config);
+    setLocalConfig(JSON.parse(JSON.stringify(config))); // Deep copy
     if (config.profiles.length > 0 && !editingProfileId) {
         setEditingProfileId(config.profiles[0].id);
     }
-    // Se estiver em modo setup, força a aba do Google
     if (isSetupMode && isOpen) {
         setActiveTab('google');
     }
   }, [isOpen, config, isSetupMode]);
 
   const handleAddProfile = () => {
-      const newProfile: DifyProfile = {
+      const newProfile: DifyProfile & { difyApiKey?: string } = {
           id: Math.random().toString(36).substr(2, 9),
           name: 'Novo Agente',
-          difyDatasetId: DEFAULT_DIFY_DATASET_ID
+          difyDatasetId: DEFAULT_DIFY_DATASET_ID,
+          difyBaseUrl: 'https://api.dify.ai/v1',
+          difyApiKey: '' // O admin terá que preencher
       };
       setLocalConfig(prev => ({
           ...prev,
@@ -61,7 +63,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
       if (editingProfileId === id) setEditingProfileId(null);
   };
 
-  const updateProfile = (id: string, field: keyof DifyProfile, value: string) => {
+  const updateProfile = (id: string, field: string, value: string) => {
       setLocalConfig(prev => ({
           ...prev,
           profiles: prev.profiles.map(p => p.id === id ? { ...p, [field]: value } : p)
@@ -72,7 +74,6 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
 
   if (!isOpen) return null;
 
-  // Renderização de Bloqueio APENAS se não for Admin E não for Setup Mode
   if (!isAdmin && !isSetupMode) {
       return (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-[9000] p-4 animate-fade-in">
@@ -82,7 +83,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
                 </div>
                 <h2 className="text-xl font-bold text-gray-800 mb-2">Acesso Restrito</h2>
                 <p className="text-gray-500 mb-6 text-sm">
-                    As configurações são restritas. <br/>
+                    Apenas administradores podem alterar as configurações do servidor. <br/>
                     Você está logado como: <span className="font-bold text-gray-700">{userEmail || 'Desconhecido'}</span>
                 </p>
                 <button onClick={onClose} className="px-6 py-2 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-900 transition w-full">
@@ -101,17 +102,15 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
         <div className="bg-slate-900 px-6 py-4 flex justify-between items-center text-white shrink-0">
           <div>
               <h2 className="text-lg font-bold flex items-center gap-2">
-                <i className="fas fa-cogs text-indigo-400"></i> Configurações Avançadas
+                <i className="fas fa-server text-emerald-400"></i> Configuração do Servidor
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                  {isSetupMode ? <span className="text-amber-400 font-bold">⚠️ MODO SETUP INICIAL</span> : "Gestão de Agentes e Conexões"}
+                  Alterações aqui afetam todos os usuários conectados a este Backend.
               </p>
           </div>
-          {!isSetupMode && (
-            <button onClick={onClose} className="text-slate-400 hover:text-white transition w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-800">
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-800">
                 <i className="fas fa-times text-lg"></i>
-            </button>
-          )}
+          </button>
         </div>
 
         <div className="flex flex-1 overflow-hidden">
@@ -122,7 +121,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
                     className={`p-3 text-left rounded-xl text-sm font-bold transition flex items-center gap-3 ${activeTab === 'google' ? 'bg-white shadow-sm text-emerald-600 ring-1 ring-slate-200' : 'text-slate-600 hover:bg-slate-100'}`}
                 >
                     <i className="fab fa-google w-5 text-center"></i> 
-                    Conexões
+                    App Google
                     {isSetupMode && <span className="w-2 h-2 rounded-full bg-rose-500 ml-auto animate-pulse"></span>}
                 </button>
                 <button 
@@ -135,7 +134,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
                     onClick={() => setActiveTab('general')}
                     className={`p-3 text-left rounded-xl text-sm font-bold transition flex items-center gap-3 ${activeTab === 'general' ? 'bg-white shadow-sm text-slate-700 ring-1 ring-slate-200' : 'text-slate-600 hover:bg-slate-100'}`}
                 >
-                    <i className="fas fa-sliders-h w-5 text-center"></i> Preferências
+                    <i className="fas fa-sliders-h w-5 text-center"></i> Geral
                 </button>
             </div>
 
@@ -146,11 +145,11 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
                     <div className="space-y-6">
                         <div className="flex justify-between items-center">
                             <div>
-                                <h3 className="text-lg font-bold text-slate-800">Perfis de Agente</h3>
-                                <p className="text-sm text-slate-500">Configure para onde os documentos serão enviados.</p>
+                                <h3 className="text-lg font-bold text-slate-800">Gerenciar Agentes</h3>
+                                <p className="text-sm text-slate-500">Configure as chaves que o Servidor usará para falar com o Dify.</p>
                             </div>
                             <button onClick={handleAddProfile} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 transition shadow-md shadow-indigo-200">
-                                <i className="fas fa-plus mr-2"></i> Novo Agente
+                                <i className="fas fa-plus mr-2"></i> Adicionar
                             </button>
                         </div>
 
@@ -174,7 +173,7 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
                             <div className="space-y-5 animate-fade-in">
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                                     <div className="md:col-span-2">
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Nome de Identificação</label>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Nome do Agente</label>
                                         <input 
                                             type="text" 
                                             value={currentProfile.name}
@@ -188,35 +187,38 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
                                             disabled={localConfig.profiles.length <= 1}
                                             className="w-full p-2.5 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition font-bold text-sm disabled:opacity-50"
                                         >
-                                            <i className="fas fa-trash-alt mr-2"></i> Excluir Agente
+                                            <i className="fas fa-trash-alt mr-2"></i> Excluir
                                         </button>
                                     </div>
                                 </div>
                                 
                                 <div className="bg-slate-50 p-5 rounded-xl border border-slate-200">
-                                    <h4 className="font-bold text-slate-700 text-sm uppercase mb-3">Conexão Backend (Seguro)</h4>
-                                    
-                                    <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-lg flex items-start gap-3 mb-4">
-                                        <i className="fas fa-shield-alt text-emerald-600 text-xl mt-1"></i>
-                                        <div>
-                                            <h5 className="font-bold text-emerald-800 text-sm">Chave API Protegida</h5>
-                                            <p className="text-xs text-emerald-700 mt-1">
-                                                A chave de API deste agente está armazenada de forma segura no servidor (arquivo .env). 
-                                                O navegador apenas envia o texto e o Dataset ID.
-                                            </p>
-                                        </div>
-                                    </div>
-
                                     <div className="space-y-4">
                                         <div>
-                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Dataset ID (Identificador da Base)</label>
+                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Dataset ID (Knowledge ID)</label>
                                             <input 
                                                 type="text" 
                                                 value={currentProfile.difyDatasetId}
                                                 onChange={(e) => updateProfile(currentProfile.id, 'difyDatasetId', e.target.value)}
                                                 className="w-full p-2.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-sm shadow-sm"
                                             />
-                                            <p className="text-[10px] text-slate-400 mt-1">Encontrado na URL do Dify (Knowledge &gt; Sua Base)</p>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                                                Dify API Key (Segredo)
+                                            </label>
+                                            <input 
+                                                type="text" 
+                                                // @ts-ignore
+                                                value={currentProfile.difyApiKey || ''}
+                                                // @ts-ignore
+                                                onChange={(e) => updateProfile(currentProfile.id, 'difyApiKey', e.target.value)}
+                                                placeholder={currentProfile.difyApiKey === '***HIDDEN***' ? 'Chave salva e segura (***). Digite para alterar.' : 'Cole a chave da API do Dify aqui'}
+                                                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-sm shadow-sm text-slate-600"
+                                            />
+                                            <p className="text-[10px] text-slate-500 mt-1">
+                                                Esta chave será salva apenas no servidor (arquivo json). O frontend nunca terá acesso real a ela.
+                                            </p>
                                         </div>
                                     </div>
                                 </div>
@@ -227,18 +229,11 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
 
                 {activeTab === 'google' && (
                     <div className="space-y-6">
-                         {isSetupMode && (
-                            <div className="bg-rose-50 border-l-4 border-rose-500 p-4 rounded text-sm text-rose-800 mb-4 animate-fade-in">
-                                <h4 className="font-bold mb-1"><i className="fas fa-exclamation-triangle mr-2"></i> Configuração Inicial Necessária</h4>
-                                <p>Para logar e sincronizar arquivos, você precisa inserir as credenciais do <strong>Google Cloud</strong> abaixo.</p>
-                            </div>
-                        )}
                         <div className="bg-amber-50 border-l-4 border-amber-400 p-4 rounded text-sm text-amber-800">
-                             <strong>Atenção:</strong> As chaves do Google Cloud (Drive) abaixo são usadas para o login do usuário (OAuth). Elas são visíveis publicamente no Client-Side (padrão Google).
+                             Estas configurações definem qual App Google (Projeto Cloud) será usado para login de <strong>todos</strong> os usuários deste frontend.
                         </div>
 
                         <div>
-                            <h4 className="font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100">Google Drive API (OAuth & Access)</h4>
                             <div className="space-y-4">
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Client ID (OAuth 2.0) <span className="text-red-500">*</span></label>
@@ -247,7 +242,6 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
                                         value={localConfig.googleClientId}
                                         onChange={(e) => setLocalConfig({...localConfig, googleClientId: e.target.value})}
                                         className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none font-mono text-sm"
-                                        placeholder="Ex: 123456...apps.googleusercontent.com"
                                     />
                                 </div>
                                 <div>
@@ -257,7 +251,6 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
                                         value={localConfig.googleApiKey}
                                         onChange={(e) => setLocalConfig({...localConfig, googleApiKey: e.target.value})}
                                         className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none font-mono text-sm"
-                                        placeholder="AIzaSy..."
                                     />
                                 </div>
                             </div>
@@ -268,47 +261,29 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
                 {activeTab === 'general' && (
                     <div className="space-y-6">
                         <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
-                            <div className="flex items-start gap-4">
-                                <div className="p-2 bg-white rounded-lg border border-slate-200 shadow-sm">
-                                    <i className="fas fa-sync text-indigo-500 text-xl"></i>
-                                </div>
-                                <div>
-                                    <label className="flex items-center gap-3 cursor-pointer mb-2">
-                                        <input 
-                                            type="checkbox"
-                                            checked={localConfig.autoSync}
-                                            onChange={(e) => setLocalConfig({...localConfig, autoSync: e.target.checked})}
-                                            className="h-5 w-5 text-indigo-600 rounded focus:ring-indigo-500"
-                                        />
-                                        <span className="font-bold text-slate-700">Sincronização Automática</span>
-                                    </label>
-                                    <p className="text-sm text-slate-500 leading-relaxed">
-                                        Quando ativado, o sistema verificará periodicamente os arquivos marcados como "Monitorar" e enviará atualizações automaticamente para o Agente selecionado.
-                                    </p>
-                                </div>
-                            </div>
+                            <label className="flex items-center gap-3 cursor-pointer mb-4">
+                                <input 
+                                    type="checkbox"
+                                    checked={localConfig.autoSync}
+                                    onChange={(e) => setLocalConfig({...localConfig, autoSync: e.target.checked})}
+                                    className="h-5 w-5 text-indigo-600 rounded focus:ring-indigo-500"
+                                />
+                                <span className="font-bold text-slate-700">Habilitar Auto-Sync Global</span>
+                            </label>
                             
                             {localConfig.autoSync && (
-                                <div className="mt-6 ml-14 animate-fade-in">
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Intervalo de Verificação</label>
-                                    <div className="flex items-center gap-3">
-                                        <input 
-                                            type="number"
-                                            min="1"
-                                            max="60"
-                                            value={localConfig.syncInterval}
-                                            onChange={(e) => setLocalConfig({...localConfig, syncInterval: parseInt(e.target.value) || 5})}
-                                            className="w-20 p-2 border border-slate-300 rounded-lg text-center font-bold text-slate-700"
-                                        />
-                                        <span className="text-sm text-slate-600">minutos</span>
-                                    </div>
+                                <div className="ml-8">
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Intervalo (minutos)</label>
+                                    <input 
+                                        type="number"
+                                        min="1"
+                                        max="60"
+                                        value={localConfig.syncInterval}
+                                        onChange={(e) => setLocalConfig({...localConfig, syncInterval: parseInt(e.target.value) || 5})}
+                                        className="w-20 p-2 border border-slate-300 rounded-lg text-center font-bold text-slate-700"
+                                    />
                                 </div>
                             )}
-                        </div>
-
-                        <div className="p-4 rounded-xl bg-slate-100 text-xs text-slate-500 font-mono">
-                             Origin: {window.location.origin} <br/>
-                             Build Version: 2.4.0 (TradeSync - Secure Backend)
                         </div>
                     </div>
                 )}
@@ -317,12 +292,12 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ config, user, onSave, 
 
         {/* Footer */}
         <div className="bg-slate-50 p-4 flex justify-end gap-3 border-t border-slate-200 shrink-0">
-          {!isSetupMode && <button onClick={onClose} className="px-5 py-2.5 text-slate-600 hover:bg-slate-200 rounded-lg font-medium transition">Cancelar</button>}
+          <button onClick={onClose} className="px-5 py-2.5 text-slate-600 hover:bg-slate-200 rounded-lg font-medium transition">Cancelar</button>
           <button 
             onClick={() => onSave(localConfig)}
             className="px-6 py-2.5 bg-slate-900 text-white rounded-lg hover:bg-black font-bold shadow-lg shadow-slate-300 flex items-center gap-2 transform active:scale-95 transition"
           >
-            <i className="fas fa-save"></i> {isSetupMode ? "Salvar e Iniciar" : "Salvar Alterações"}
+            <i className="fas fa-cloud-upload-alt"></i> Salvar no Servidor
           </button>
         </div>
       </div>
