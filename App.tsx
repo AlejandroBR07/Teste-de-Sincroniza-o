@@ -167,6 +167,7 @@ const App: React.FC = () => {
           } as DocFile;
       });
 
+      // Ordenação: Monitorados primeiro, depois Pendentes, depois Data
       mapped.sort((a, b) => {
           if (a.watched !== b.watched) return a.watched ? -1 : 1;
           if (a.status === 'pendente' && b.status !== 'pendente') return -1;
@@ -323,7 +324,7 @@ ${content}`;
                     saveHistoryToServer(newState);
                     return newState;
                 });
-                if (isCurrentView) notify("Sucesso", "Documento enviado para o Dify.", "success");
+                if (isCurrentView) notify("Sucesso", `${file.name.substring(0,20)}... enviado.`, "success");
             } else {
                 throw new Error(result.message);
             }
@@ -333,22 +334,41 @@ ${content}`;
         }
   };
 
+  // --- NOVA LÓGICA DE SYNC ALL ---
   const handleSyncAll = () => {
-      const candidates = files.filter(f => f.watched && (f.status === 'pendente' || f.status === 'erro'));
+      // Pega TODOS os arquivos monitorados (marcados com checkbox)
+      const candidates = files.filter(f => f.watched);
+
       if (candidates.length === 0) {
-          notify("Info", "Nenhum arquivo pendente para sincronizar.", "info");
+          notify("Atenção", "Nenhum arquivo selecionado para monitoramento.", "warning");
           return;
       }
+
+      // Conta quantos já estão tecnicamente atualizados, apenas para informar o usuário
+      const upToDateCount = candidates.filter(f => f.status === 'sincronizado').length;
+      const pendingCount = candidates.length - upToDateCount;
+
+      let message = `Você selecionou ${candidates.length} arquivos monitorados.`;
+      
+      if (pendingCount === 0) {
+          message += ` Todos já parecem estar atualizados. Deseja forçar o envio de todos novamente?`;
+      } else {
+          message += ` ${pendingCount} pendentes e ${upToDateCount} atualizados. Deseja processar todos agora?`;
+      }
+
       setConfirmModal({
           isOpen: true,
-          title: "Sincronização em Massa",
-          message: `Deseja enviar ${candidates.length} arquivos pendentes agora?`,
+          title: "Sincronizar Tudo",
+          message: message,
           action: () => {
               setIsSyncing(true);
               (async () => {
-                  for (const f of candidates) await processSync(f);
+                  // Força o envio de todos da lista candidates
+                  for (const f of candidates) {
+                      await processSync(f);
+                  }
                   setIsSyncing(false);
-                  notify("Finalizado", "Processo em massa concluído.", "success");
+                  notify("Finalizado", "Ciclo de sincronização forçada concluído.", "success");
               })();
           }
       });
@@ -357,31 +377,48 @@ ${content}`;
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
     if (config.autoSync && isConnected && !loadingConfig) {
+        
+        // Timer de Auto Sync
         interval = setInterval(async () => {
             if (isSyncingRef.current) return;
+            
             try {
+                // Busca fresca no Drive para garantir dados reais
                 const response = await window.gapi.client.drive.files.list({
                     'pageSize': 100,
                     'fields': 'files(id, name, mimeType, modifiedTime)',
                     'q': "trashed = false and (mimeType = 'application/vnd.google-apps.document' or mimeType = 'application/pdf' or mimeType = 'text/plain' or mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')"
                 });
+                
                 const driveFiles = response.result.files as any[];
                 if (!driveFiles) return;
                 
+                let foundAnyUpdate = false;
+
                 for (const profile of configRef.current.profiles) {
                     const watchedIds = watchedMapRef.current[profile.id] || [];
                     const history = historyMapRef.current[profile.id] || {};
+                    
                     if (watchedIds.length === 0) continue;
-                    const pendingFiles = driveFiles.filter(dFile => {
+
+                    const filesToSync = driveFiles.filter(dFile => {
+                        // Só processa se estiver na lista de monitorados (checkbox)
                         if (!watchedIds.includes(dFile.id)) return false;
+                        
                         const lastSync = history[dFile.id];
+                        // Se nunca sincronizou, sync.
                         if (!lastSync) return true;
+                        
+                        // Se mudou depois do último sync, sync.
                         return new Date(dFile.modifiedTime).getTime() > (new Date(lastSync).getTime() + 60000);
                     });
-                    if (pendingFiles.length > 0) {
-                        notify("Auto Sync", `Atualizando ${pendingFiles.length} documentos...`, "info");
+
+                    if (filesToSync.length > 0) {
+                        foundAnyUpdate = true;
                         setIsSyncing(true);
-                        for (const rawFile of pendingFiles) {
+                        notify("Auto Sync", `Detectadas alterações em ${filesToSync.length} arquivos.`, "info");
+                        
+                        for (const rawFile of filesToSync) {
                             await processSync({
                                 id: rawFile.id, name: rawFile.name, mimeType: rawFile.mimeType, modifiedTime: rawFile.modifiedTime,
                                 watched: true, status: 'pendente'
@@ -390,7 +427,14 @@ ${content}`;
                         setIsSyncing(false);
                     }
                 }
+                
+                if (!foundAnyUpdate) {
+                    // Opcional: Log silencioso para debug
+                    console.log(`[AutoSync] Ciclo rodou às ${new Date().toLocaleTimeString()}. Nada novo.`);
+                }
+
             } catch (e: any) { 
+                console.error("Erro AutoSync:", e);
                 if (e.status === 401) { setIsConnected(false); clearInterval(interval); }
             }
         }, config.syncInterval * 60 * 1000);
@@ -411,7 +455,7 @@ ${content}`;
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F7F9FC] font-sans text-gray-900">
-      {/* HEADER: Enterprise Black */}
+      {/* HEADER */}
       <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-30 h-16 flex-shrink-0 shadow-md">
         <div className="max-w-7xl mx-auto px-6 h-full flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -430,7 +474,7 @@ ${content}`;
                      {config.autoSync && (
                          <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-emerald-900/30 border border-emerald-800 rounded-full text-emerald-400 text-xs font-bold animate-pulse">
                              <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-                             Auto-Sync Ativo (Não feche a aba)
+                             Auto-Sync: Ativo
                          </div>
                      )}
                      <span className="text-sm text-slate-300 hidden sm:block font-medium">{userProfile.email}</span>
