@@ -87,7 +87,7 @@ const App: React.FC = () => {
     try {
         const url = getBackendUrl();
         const resConfig = await fetch(`${url}/api/config`, { headers: { "ngrok-skip-browser-warning": "true" } });
-        if (!resConfig.ok) throw new Error("Connection failed");
+        if (!resConfig.ok) throw new Error("Falha na conexão");
         const serverConfig = await resConfig.json();
         setConfig(serverConfig);
 
@@ -101,7 +101,7 @@ const App: React.FC = () => {
 
         setLoadingConfig(false);
     } catch (e: any) {
-        notify("Backend Disconnected", "Ensure server.js is running.", "error");
+        notify("Backend Offline", "Certifique-se que o server.js está rodando.", "error");
         setLoadingConfig(false);
     }
   };
@@ -127,12 +127,12 @@ const App: React.FC = () => {
             headers: { 'Content-Type': 'application/json', 'X-User-Email': userProfile?.email || '', "ngrok-skip-browser-warning": "true" },
             body: JSON.stringify(newConfig)
         });
-        if (!res.ok) throw new Error("Save failed");
+        if (!res.ok) throw new Error("Falha ao salvar");
         setConfig(newConfig); 
         setIsConfigOpen(false);
-        notify("Saved", "System configuration updated.", "success");
+        notify("Salvo", "Configurações atualizadas com sucesso.", "success");
       } catch (e: any) {
-          notify("Error", e.message, "error");
+          notify("Erro", e.message, "error");
       }
   };
 
@@ -238,8 +238,8 @@ const App: React.FC = () => {
   const handleDisconnect = () => {
       setConfirmModal({
           isOpen: true,
-          title: "Sign Out",
-          message: "Disconnect from Google Drive?",
+          title: "Sair da Conta Google",
+          message: "Você será desconectado e a sincronização automática será interrompida neste dispositivo. Deseja continuar?",
           isDestructive: true,
           action: () => {
               const token = window.gapi.client.getToken();
@@ -262,7 +262,7 @@ const App: React.FC = () => {
         let query = "trashed = false and (mimeType = 'application/vnd.google-apps.document' or mimeType = 'application/pdf' or mimeType = 'text/plain' or mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')";
         if (queryTerm) {
             query += ` and name contains '${queryTerm.replace(/'/g, "\\'")}'`;
-            notify("Searching", "Filtering files...", "info");
+            notify("Buscando", "Filtrando documentos...", "info");
         }
         const response = await window.gapi.client.drive.files.list({
             'pageSize': 60,
@@ -274,7 +274,7 @@ const App: React.FC = () => {
         const dFiles = response.result.files;
         if (dFiles) {
             setRawDriveFiles(dFiles); 
-            if(queryTerm) notify("Done", `${dFiles.length} files found.`, "success");
+            if(queryTerm) notify("Pronto", `${dFiles.length} arquivos encontrados.`, "success");
         }
     } catch (err: any) {
         if (err.status === 401) setIsConnected(false);
@@ -323,12 +323,12 @@ ${content}`;
                     saveHistoryToServer(newState);
                     return newState;
                 });
-                if (isCurrentView) notify("Success", "File synced successfully.", "success");
+                if (isCurrentView) notify("Sucesso", "Documento enviado para o Dify.", "success");
             } else {
                 throw new Error(result.message);
             }
         } catch (err: any) {
-            notify("Sync Failed", err.message, "error");
+            notify("Falha no Envio", err.message, "error");
             if (isCurrentView) setFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'erro' } : f));
         }
   };
@@ -336,19 +336,19 @@ ${content}`;
   const handleSyncAll = () => {
       const candidates = files.filter(f => f.watched && (f.status === 'pendente' || f.status === 'erro'));
       if (candidates.length === 0) {
-          notify("No updates", "All watched files are up to date.", "info");
+          notify("Info", "Nenhum arquivo pendente para sincronizar.", "info");
           return;
       }
       setConfirmModal({
           isOpen: true,
-          title: "Batch Sync",
-          message: `Sync ${candidates.length} pending files?`,
+          title: "Sincronização em Massa",
+          message: `Deseja enviar ${candidates.length} arquivos pendentes agora?`,
           action: () => {
               setIsSyncing(true);
               (async () => {
                   for (const f of candidates) await processSync(f);
                   setIsSyncing(false);
-                  notify("Batch Complete", "Synchronization finished.", "success");
+                  notify("Finalizado", "Processo em massa concluído.", "success");
               })();
           }
       });
@@ -379,7 +379,7 @@ ${content}`;
                         return new Date(dFile.modifiedTime).getTime() > (new Date(lastSync).getTime() + 60000);
                     });
                     if (pendingFiles.length > 0) {
-                        notify("Auto Sync", `Updating ${pendingFiles.length} files...`, "info");
+                        notify("Auto Sync", `Atualizando ${pendingFiles.length} documentos...`, "info");
                         setIsSyncing(true);
                         for (const rawFile of pendingFiles) {
                             await processSync({
@@ -402,8 +402,8 @@ ${content}`;
       return (
           <div className="min-h-screen flex items-center justify-center bg-white">
               <div className="flex flex-col items-center">
-                  <div className="w-12 h-12 border-2 border-gray-900 border-t-transparent rounded-full animate-spin mb-4"></div>
-                  <h2 className="text-xs font-bold text-gray-900 tracking-widest uppercase">Initializing System</h2>
+                  <div className="w-12 h-12 border-4 border-slate-900 border-t-transparent rounded-full animate-spin mb-4"></div>
+                  <h2 className="text-sm font-bold text-slate-900 tracking-widest uppercase">Iniciando DocSync...</h2>
               </div>
           </div>
       );
@@ -412,29 +412,35 @@ ${content}`;
   return (
     <div className="min-h-screen flex flex-col bg-[#F7F9FC] font-sans text-gray-900">
       {/* HEADER: Enterprise Black */}
-      <header className="bg-black text-white border-b border-gray-800 sticky top-0 z-30 h-14 flex-shrink-0 shadow-md">
-        <div className="max-w-7xl mx-auto px-4 md:px-6 h-full flex items-center justify-between">
+      <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-30 h-16 flex-shrink-0 shadow-md">
+        <div className="max-w-7xl mx-auto px-6 h-full flex items-center justify-between">
             <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2.5">
-                    <div className="w-6 h-6 rounded bg-white flex items-center justify-center">
-                        <i className="fas fa-cube text-black text-xs"></i>
+                <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded bg-white flex items-center justify-center shadow-lg shadow-white/10">
+                        <i className="fas fa-file-invoice text-slate-900 text-sm"></i>
                     </div>
-                    <span className="text-sm font-bold tracking-tight">TradeStars<span className="text-gray-500 font-normal ml-1">Sync</span></span>
+                    <span className="text-lg font-bold tracking-tight">DocSync</span>
                 </div>
-                <div className="h-4 w-px bg-gray-800 hidden sm:block"></div>
-                <div className="hidden sm:block text-[10px] text-gray-400 font-medium tracking-wide uppercase">Dify Integration</div>
+                <div className="h-5 w-px bg-slate-700 hidden sm:block mx-2"></div>
+                <div className="hidden sm:block text-xs text-slate-400 font-medium tracking-wide uppercase">Google Drive &rarr; Dify</div>
             </div>
             
             {isConnected && userProfile && (
-                <div className="flex items-center gap-3">
-                     <span className="text-xs text-gray-400 hidden sm:block font-medium">{userProfile.email}</span>
-                     <img src={userProfile.picture} alt="" className="w-6 h-6 rounded-full border border-gray-700 bg-gray-800" />
+                <div className="flex items-center gap-4">
+                     {config.autoSync && (
+                         <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-emerald-900/30 border border-emerald-800 rounded-full text-emerald-400 text-xs font-bold animate-pulse">
+                             <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                             Auto-Sync Ativo (Não feche a aba)
+                         </div>
+                     )}
+                     <span className="text-sm text-slate-300 hidden sm:block font-medium">{userProfile.email}</span>
+                     <img src={userProfile.picture} alt="" className="w-8 h-8 rounded-full border-2 border-slate-700 bg-slate-800" />
                 </div>
             )}
         </div>
       </header>
 
-      <main className="flex-1 max-w-7xl mx-auto w-full p-6 overflow-hidden flex flex-col">
+      <main className="flex-1 max-w-7xl mx-auto w-full p-6 lg:p-8 overflow-hidden flex flex-col">
         <Dashboard 
             files={files}
             config={config}
